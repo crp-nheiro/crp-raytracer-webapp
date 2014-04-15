@@ -165,6 +165,7 @@ module.exports = function (grunt) {
                 files: {
                     src: [
                         '<%= config.dist %>/scripts/{,*/}*.js',
+                        '!<%= config.dist %>/scripts/worker/*.js',
                         '<%= config.dist %>/styles/{,*/}*.css',
                         '<%= config.dist %>/images/{,*/}*.*',
                         '<%= config.dist %>/styles/fonts/{,*/}*.*',
@@ -277,7 +278,8 @@ module.exports = function (grunt) {
                         'images/{,*/}*.webp',
                         '{,*/}*.html',
                         'styles/fonts/{,*/}*.*',
-                        'bower_components/bootstrap/dist/fonts/*.*'
+                        'bower_components/bootstrap/dist/fonts/*.*',
+                        'scripts/worker/*.js'
                     ]
                 }]
             },
@@ -305,7 +307,6 @@ module.exports = function (grunt) {
             ]
         }
     });
-
 
     grunt.registerTask('serve', function (target) {
         if (target === 'dist') {

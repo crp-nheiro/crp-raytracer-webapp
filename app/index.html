@@ -8,8 +8,9 @@
     <title>crp raytracer webapp</title>
     <meta name="description" content="">
     <meta name="viewport" content="initial-scale=1, width=device-width, maximum-scale=1, minimum-scale=1, user-scalable=no">
+    <!--
     <link rel="shortcut icon" href="/favicon.ico">
-    
+    -->
     <!-- Place favicon.ico and apple-touch-icon.png in the root directory -->
     
     <!-- build:css styles/vendor.css -->
@@ -45,15 +46,17 @@
                     </div>
                     <div class="intro">
                         <h1>Browser distributed ray tracing</h1>
-                        <p class="lead">Explore how your products can be a champion. Includes multiple colors and variations. Available exclusively on WrapBootstrap marketplace.</p>
+                        <p class="lead">Lorem ipsum dolor sit amet, consectetur adipiscing elit.Lorem ipsum dolor sit amet, consectetur adipiscing elit.Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
                         <div class="buttons">
-                            <a class="btn btn-1 btn-lg"><i class="fa fa-download icon"></i>Download</a>
+                            <a class="btn btn-1 btn-lg" href="#features"><i class="fa fa-download icon"></i>Try it</a>
+                            <!--
                             <a class="btn btn-link btn-lg"><i class="fa fa-arrow-circle-o-right"></i> Learn more</a>
+                            -->
                         </div>
                     </div>
                 </div>
                 <div class="col-md-6 col-sm-6">
-                    
+
                 </div>
             </div>
         </div>
@@ -64,30 +67,34 @@
             <div class="row">
                 <div class="col-md-12">
                     <div class="overview">
-                        <h1>Amazing features</h1>
+                        <h1>Let's compare them</h1>
                         <p class="lead">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
                     </div>
                 </div>
             </div>
             <div class="row">
                 <div class="col-md-6 col-sm-6">
-                    <img class="img-responsive img-square" src="http://placehold.it/400x300" alt="TODO">
+                    <canvas id="canvas-local" style="width: 100%; height: 350px; border: 5px solid #1abc9c"></canvas>
+                    <p id="time-local" class="text-center lead">&nbsp;</p>
                 </div>
                 <div class="col-md-6 col-sm-6">
-                    <img class="img-responsive img-square" src="http://placehold.it/400x300" alt="TODO">
+                    <canvas id="canvas-tracer" style="width: 100%; height: 350px; border: 5px solid #1abc9c"></canvas>
+                    <p id="time-tracer" class="text-center lead">&nbsp;</p>
                 </div>
             </div>
             <div class="row">
                 <div class="text-center" style="margin-top: 25px;">
-                    <a class="btn btn-1 btn-lg"><i class="fa fa-gears icon"></i>Run</a>
+                    <a id="run" class="btn btn-1 btn-lg"><i class="fa fa-gears icon"></i>Run</a>
                 </div>
             </div>
         </div>
     </section>
 
+<!--
     <section id="try">
         TRY
     </section>
+-->
 
     <section id="about">
         <div class="container">
@@ -159,7 +166,7 @@
                 </div>
             </div>
         </div>
-        
+
         <div id="subscribe">
             <div class="container">
                 <div class="row">
@@ -219,7 +226,7 @@
         <!-- endbuild -->
 
         <!-- build:js({app,.tmp}) scripts/main.js -->
-        <script src="scripts/main.js"></script>
+        <script src="scripts/main_browser.js"></script>
         <!-- endbuild -->
 </body>
 </html>
