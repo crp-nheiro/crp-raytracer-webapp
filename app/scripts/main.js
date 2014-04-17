@@ -1,24 +1,21 @@
 var fs = require('fs');
 var RayTracer = require('crp-raytracer');
 
-function runRayTracer(input) {
+function runRayTracer(input, tasks, canvasSelector, onEnd) {
 
-  var canvas = $('#canvas-tracer').get(0);
+  var canvas = $(canvasSelector).get(0);
   var canvasContext = canvas.getContext("2d");
   var canvasImageData;
   
   /* Clear canvas */
   canvas.width = canvas.width;
 
-  var t = +new Date();
-
   var rayTracer = new RayTracer({
-    split: 10,
+    split: tasks,
     input: input,
     credentials: {
-      "token": "19575cb6-5ec2-4143-865a-71d26813f0da"
-    },
-    //mock: true
+      "token": "d41337aa-2f11-46e4-8a51-7141e6e84490"
+    }
   });
  
   rayTracer.on('run', function(result) {
@@ -28,7 +25,6 @@ function runRayTracer(input) {
   });
 
   rayTracer.on('data', function(result) {
-    console.log("onData!");
     var i = 0;
     for(var y = result.begin_y; y < result.end_y; y++) {
         for(var x = result.begin_x; x < result.end_x; x++) {
@@ -40,13 +36,11 @@ function runRayTracer(input) {
         }
     }
     canvasContext.putImageData(canvasImageData, 0, 0);
-    /* Update counter */
-    $('#time-tracer').html(Math.round((+new Date() - t) / 1000) + 's');
   });
 
-  rayTracer.on('end', function(result) {
-    //crpCanvasContext.putImageData(crpImageData, 0, 0);
-  });
+  if(onEnd != null) {
+    rayTracer.on('end', onEnd);
+  }
 
   rayTracer.run();
 }
@@ -99,9 +93,58 @@ function runLocal(input) {
 
 }
 
-
 $('#run').click(function() {
   var input = fs.readFileSync(__dirname + "/../scenes/pokeball.rt", 'utf8');
-  runRayTracer(input);
+  runRayTracer(input, 10, '#canvas-tracer', '#time-tracer');
   runLocal(input);
+});
+
+var editor;
+var tasks = 5;
+
+$(function() {
+
+  editor = CodeMirror.fromTextArea($('#input')[0], { lineNumbers: true });
+
+  $("#number").val(Math.pow(tasks, 2));
+  $("#slider" ).slider({
+    range: "min",
+    value: tasks,
+    min: 1,
+    max: 10,
+    step: 1,
+    slide: function( event, ui ) {
+      tasks = ui.value;
+      $("#number").val(Math.pow(tasks, 2));
+    }
+  });
+
+});
+
+$('#selection img').click(function() {
+  var title = $(this).attr('title');
+  $.get('examples/' + title + '.rt', function(file) {
+      editor.setValue(file.trim());
+    });
+});
+
+$('#run-try').click(function() {
+  $('#run-try').attr("disabled", true);
+  // Start Counter
+  var time = 0;
+  var timer = setInterval(function() {
+    time++;
+    $('#time-try').html(time + 's');
+  }, 1000);
+  var stop = function() {
+    clearInterval(timer);
+    $('#run-try').attr("disabled", false);
+  };
+  // Run raytracer
+  try {
+    runRayTracer(editor.getValue(), tasks, '#canvas-try', stop);
+  } catch(e) {
+    stop();
+  }
+  
 });
