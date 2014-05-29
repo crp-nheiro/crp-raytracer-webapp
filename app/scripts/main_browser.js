@@ -1,108 +1,127 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-(function (__dirname){
-var fs = require('fs');
+
 var RayTracer = require('crp-raytracer');
+
+window.requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame || window.msRequestAnimationFrame;
 
 function runRayTracer(input, tasks, canvasSelector, onEnd) {
 
-  var canvas = $(canvasSelector).get(0);
-  var canvasContext = canvas.getContext("2d");
-  var canvasImageData;
-  
-  /* Clear canvas */
-  canvas.width = canvas.width;
+    var canvas = $(canvasSelector).get(0);
+    var canvasContext = canvas.getContext("2d");
+    var canvasImageData;
+    
+    /* Clear canvas */
+    canvas.width = canvas.width;
 
-  var rayTracer = new RayTracer({
-    split: tasks,
-    input: input,
-    credentials: {
-      "token": "d41337aa-2f11-46e4-8a51-7141e6e84490"
-    }
-  });
- 
-  rayTracer.on('run', function(result) {
-    canvas.width = result.width;
-    canvas.height =  result.height;
-    canvasImageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
-  });
-
-  rayTracer.on('data', function(result) {
-    var i = 0;
-    for(var y = result.begin_y; y < result.end_y; y++) {
-        for(var x = result.begin_x; x < result.end_x; x++) {
-          var index = (x * canvas.width + y) * 4;
-          canvasImageData.data[index] = result.data[i++];
-          canvasImageData.data[index+1] = result.data[i++];
-          canvasImageData.data[index+2] = result.data[i++];
-          canvasImageData.data[index+3] = 255;
+    var rayTracer = new RayTracer({
+        split: tasks,
+        input: input,
+        credentials: {
+            "token": "5b199d2e-f752-47a1-95eb-93878f589be4"
         }
-    }
-    canvasContext.putImageData(canvasImageData, 0, 0);
-  });
+    });
 
-  if(onEnd != null) {
-    rayTracer.on('end', onEnd);
-  }
+    rayTracer.on('run', function(result) {
+        canvas.width = result.width;
+        canvas.height =  result.height;
+        canvasImageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+    });
 
-  rayTracer.run();
+    var needUpdate = false;
+    var throtle = 20;
+    var draw = function() {
+        if(needUpdate && throtle-- < 0) {
+            canvasContext.putImageData(canvasImageData, 0, 0);
+            needUpdate = false;
+            throtle = 20;
+        }
+        requestAnimationFrame(draw);
+    };
+    window.requestAnimationFrame(draw);
+
+    rayTracer.on('data', function(result) {
+        var i = 0;
+        for(var y = result.begin_y; y < result.end_y; y++) {
+            for(var x = result.begin_x; x < result.end_x; x++) {
+                var index = (x * canvas.width + y) * 4;
+                canvasImageData.data[index] = result.data[i++];
+                canvasImageData.data[index+1] = result.data[i++];
+                canvasImageData.data[index+2] = result.data[i++];
+                canvasImageData.data[index+3] = 255;
+            }
+        }
+        needUpdate = true;
+    });
+
+    rayTracer.on('end', function() {
+        if(onEnd != null) {
+            onEnd();
+        }
+    });
+    
+    rayTracer.run();
 }
 
 var worker;
 
-function runLocal(input) {
+function runLocal(input, onEnd) {
 
-  var canvas = $('#canvas-local').get(0);
-  var canvasContext = canvas.getContext("2d");
-  var canvasImageData;
+    var canvas = $('#canvas-local').get(0);
+    var canvasContext = canvas.getContext("2d");
+    var canvasImageData;
 
-  /* Clear canvas */
-  canvas.width = canvas.width;
+    /* Clear canvas */
+    canvas.width = canvas.width;
 
-  /* Run Worker */
-  if(worker) {
-    worker.terminate();
-  }
-  worker = new Worker('scripts/worker/worker.js');
-  worker.postMessage([
-    'process', {
-      input: input,
+    /* Run Worker */
+    if(worker) {
+        worker.terminate();
     }
-  ]);
+    worker = new Worker('scripts/worker/worker.js');
+    worker.postMessage([
+        'process', {
+            input: input,
+        }
+    ]);
 
-  var t = +new Date();
+    var needUpdate = false;
+    var throtle = 20;
+    var draw = function() {
+        if(needUpdate && throtle-- < 0) {
+            canvasContext.putImageData(canvasImageData, 0, 0);
+            needUpdate = false;
+            throtle = 20;
+        }
+        requestAnimationFrame(draw);
+    };
+    window.requestAnimationFrame(draw);
 
-  worker.onmessage = function(msg) {    
-    if(msg.data[0] === 'result') {
-      var y = msg.data[1];
-      var idxMsg = 2;
-      for(var x = 0; x < canvas.width; x++) {
-        var index = (y * canvas.width + x) * 4;
-        canvasImageData.data[index++] = msg.data[idxMsg++];
-        canvasImageData.data[index++] = msg.data[idxMsg++];
-        canvasImageData.data[index++] = msg.data[idxMsg++];
-        canvasImageData.data[index++] = 255;
-      }
-      canvasContext.putImageData(canvasImageData, 0, 0);
-      /* Update counter */
-      $('#time-local').html(Math.round((+new Date() - t) / 1000) + 's');
-    } else if (msg.data[0] === 'resize') {
-      canvas.width = msg.data[1].W;
-      canvas.height = msg.data[1].H;
-      canvasImageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
-//    return $('#save').show();
-    }
-  };
-
+    worker.onmessage = function(msg) {    
+        if(msg.data[0] === 'result') {
+            var y = msg.data[1];
+            var idxMsg = 2;
+            for(var x = 0; x < canvas.width; x++) {
+                var index = (y * canvas.width + x) * 4;
+                canvasImageData.data[index++] = msg.data[idxMsg++];
+                canvasImageData.data[index++] = msg.data[idxMsg++];
+                canvasImageData.data[index++] = msg.data[idxMsg++];
+                canvasImageData.data[index++] = 255;
+            }
+            needUpdate = true;
+        } else if (msg.data[0] === 'resize') {
+            canvas.width = msg.data[1].W;
+            canvas.height = msg.data[1].H;
+            canvasImageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+        } else if (msg.data[0] === 'end') {
+            if(onEnd != null) {
+                onEnd();
+            }
+        }
+    };
 }
 
-$('#run').click(function() {
-  var input = "#####################\n# Global parameters #\n#####################\nglobal\n{\n  width\t\t1110\n  height\t700\n  distscreen\t1000\n  highdef\t1\n}\n\n\n##########\n# Camera #\n##########\n\neye\n{\n  coords\t-200 0 0\n}\n\n\n#########\n# Floor #\n#########\n\nitem\n{\n  type\t\tplane\n  color\t\tFFFFFF\n  reflect\t20\n  checkerboard\t30\n  coords\t0 0 -25\n}\n\n\n##########\n# Lights #\n##########\n\nlight\n{\n  color\t\tFFFFFF\n  intensity\t100\n  coords\t-300 100 100\n}\n\n\n################\n# The Pokeball #\n################\n\n### Top ###\n\nitem\n{\n  type\t\tsphere\n  color\t\tFF0000\n  radius\t25\n  limits\t0 0 0 0 2 25\n  coords\t0 0 0\n  reflect\t20\n  group_id\t1\n}\n\n### Separator ###\n\nitem\n{\n  type\t\tsphere\n  color\t\t000000\n  radius\t25\n  coords\t0 0 0\n  limits\t0 0 0 0 -2 2\n  group_id\t1\n}\n\n###  Button ###\n\nitem\n{\n  type\t\tsphere\n  color\t\t000000\n  radius\t7\n  coords\t-20 0 0\n  reflect\t10\n  group_id\t1\n}\n\nitem\n{\n  type\t\tsphere\n  color\t\tFFFFFF\n  radius\t4\n  coords\t-24 0 0\n  reflect\t10\n  group_id\t1\n}\n\n### Bottom ###\n\nitem\n{\n  type\t\tsphere\n  color\t\tFFFFFF\n  radius\t25\n  coords\t0 0 0\n  limits\t0 0 0 0 -25 -2\n  group_id\t1\n  reflect\t20\n}\n\n\n######################################\n# All the pokeballs are belong to us #\n######################################\n\ngroup\n{\n  id\t\t1\n  rot\t\t0 -20 0\n  coords\t-30 -10 0\n}\n\ngroup\n{\n  id\t\t1\n  coords\t15 50 0\n  rot\t\t-25 -45 30\n}\n\ngroup\n{\n  id\t\t1\n  coords\t35 -80 0\n  rot\t\t15 30 -20\n}";
-  runRayTracer(input, 10, '#canvas-tracer', '#time-tracer');
-  runLocal(input);
-});
-
 var editor;
-var tasks = 5;
+var tasks = 8;
 
 $(function() {
 
@@ -113,7 +132,7 @@ $(function() {
     range: "min",
     value: tasks,
     min: 1,
-    max: 10,
+    max: 15,
     step: 1,
     slide: function( event, ui ) {
       tasks = ui.value;
@@ -121,17 +140,65 @@ $(function() {
     }
   });
 
+  $("#selection img:first-child").trigger("click");
+
+});
+
+/*
+ * Compare
+ */
+
+var timerTracer;
+var timerLocal;
+
+var stopTracer = function() {
+    clearInterval(timerTracer);
+};
+
+var stopLocal = function() {
+    clearInterval(timerLocal);
+};
+
+$('#run').click(function() {
+    stopTracer();
+    stopLocal();
+
+    var input = "#####################\n# Global parameters #\n#####################\nglobal\n{\n  width\t\t1400\n  height\t800\n  distscreen\t1000\n  highdef\t1\n}\n\n\n##########\n# Camera #\n##########\n\neye\n{\n  coords\t-200 0 0\n}\n\n\n#########\n# Floor #\n#########\n\nitem\n{\n  type\t\tplane\n  color\t\tFFFFFF\n  reflect\t20\n  checkerboard\t30\n  coords\t0 0 -25\n}\n\n\n##########\n# Lights #\n##########\n\nlight\n{\n  color\t\tFFFFFF\n  intensity\t100\n  coords\t-300 100 100\n}\n\n\n################\n# The Pokeball #\n################\n\n### Top ###\n\nitem\n{\n  type\t\tsphere\n  color\t\tFF0000\n  radius\t25\n  limits\t0 0 0 0 2 25\n  coords\t0 0 0\n  reflect\t20\n  group_id\t1\n}\n\n### Separator ###\n\nitem\n{\n  type\t\tsphere\n  color\t\t000000\n  radius\t25\n  coords\t0 0 0\n  limits\t0 0 0 0 -2 2\n  group_id\t1\n}\n\n###  Button ###\n\nitem\n{\n  type\t\tsphere\n  color\t\t000000\n  radius\t7\n  coords\t-20 0 0\n  reflect\t10\n  group_id\t1\n}\n\nitem\n{\n  type\t\tsphere\n  color\t\tFFFFFF\n  radius\t4\n  coords\t-24 0 0\n  reflect\t10\n  group_id\t1\n}\n\n### Bottom ###\n\nitem\n{\n  type\t\tsphere\n  color\t\tFFFFFF\n  radius\t25\n  coords\t0 0 0\n  limits\t0 0 0 0 -25 -2\n  group_id\t1\n  reflect\t20\n}\n\n\n######################################\n# All the pokeballs are belong to us #\n######################################\n\ngroup\n{\n  id\t\t1\n  rot\t\t0 -20 0\n  coords\t-30 -10 0\n}\n\ngroup\n{\n  id\t\t1\n  coords\t15 50 0\n  rot\t\t-25 -45 30\n}\n\ngroup\n{\n  id\t\t1\n  coords\t35 -80 0\n  rot\t\t15 30 -20\n}";
+    // Start Counter
+    var timeTracer = 0;
+    timerTracer = setInterval(function() {
+        timeTracer++;
+        $('#time-tracer').html(timeTracer + 's');
+    }, 1000);
+    
+    var timeLocal = 0;
+    timerLocal = setInterval(function() {
+        timeLocal++;
+        $('#time-local').html(timeLocal + 's');
+    }, 1000);
+    
+    // Run raytracer
+    try {
+        runRayTracer(input, 8, '#canvas-tracer', stopTracer);
+        runLocal(input, stopLocal);
+    } catch(e) {
+        console.log(e);
+        stopTracer();
+        stopLocal();
+    }
+
 });
 
 $('#selection img').click(function() {
   var title = $(this).attr('title');
   $.get('examples/' + title + '.rt', function(file) {
       editor.setValue(file.trim());
-    });
+  });
 });
 
 $('#run-try').click(function() {
   $('#run-try').attr("disabled", true);
+  $('#save').attr("disabled", true);
   // Start Counter
   var time = 0;
   var timer = setInterval(function() {
@@ -141,20 +208,24 @@ $('#run-try').click(function() {
   var stop = function() {
     clearInterval(timer);
     $('#run-try').attr("disabled", false);
+    $('#save').attr("disabled", false);
   };
   // Run raytracer
   try {
     runRayTracer(editor.getValue(), tasks, '#canvas-try', stop);
   } catch(e) {
+    console.log(e);
     stop();
   }
   
 });
 
-}).call(this,"/")
-},{"crp-raytracer":2,"fs":38}],2:[function(require,module,exports){
-(function (__dirname){
-var fs = require('fs');
+$('#save').click(function() {
+  window.open($("#canvas-try").get(0).toDataURL("image/png"));
+});
+
+},{"crp-raytracer":2}],2:[function(require,module,exports){
+
 var events = require('events');
 var Buffer = require('buffer').Buffer;
 
@@ -183,7 +254,7 @@ function RayTracer(opts) {
     var scene = new Parser(opts.input).parse();
 
     /* Prepare program */
-    var program = "var scene, textures_remaining,\n__slice = [].slice;\n\nvar self = {};\n\nfunction copy(obj) {\n  if(Array.isArray(obj)) {\n    return obj.slice();\n  } else if (obj instanceof Object && !(obj instanceof Function)) {\n    var new_obj = {};\n    for(var key in obj) {\n      var val = obj[key];\n      new_obj[key] = copy(val);\n    }\n    return new_obj;\n  } else {\n    return obj;\n  }\n};\n\n/* glMatrix */\n\nvar cos=Math.cos, sin=Math.sin;\nvec3={\n  create:function(a){var b=new Array(3);a?(b[0]=a[0],b[1]=a[1],b[2]=a[2]):b[0]=b[1]=b[2]=0;return b},\n  set:function(a,b){b[0]=a[0];b[1]=a[1];b[2]=a[2];return b},\n  add:function(a,b,c){if(!c||a===c)return a[0]+=b[0],a[1]+=b[1],a[2]+=b[2],a;c[0]=a[0]+b[0];c[1]=a[1]+b[1];c[2]=a[2]+b[2];return c},\n  mul:function(a,b,c){if(!c||a===c)return a[0]*=b[0],a[1]*=b[1],a[2]*=b[2],a;c[0]=a[0]*b[0];c[1]=a[1]*b[1];c[2]=a[2]*b[2];return c},\n  sub:function(a,b,c){if(!c||a===c)return a[0]-=b[0],a[1]-=b[1],a[2]-=b[2],a;c[0]=a[0]-b[0];c[1]=a[1]-b[1];c[2]=a[2]-b[2];return c},\n  negate:function(a,b){b||(b=a);b[0]=-a[0];b[1]=-a[1];b[2]=-a[2];return b},\n  scale:function(a,b,c){if(!c||a===c)return a[0]*=b,a[1]*=b,a[2]*=b,a;c[0]=a[0]*b;c[1]=a[1]*b;c[2]=a[2]*b;return c},\n  plus:function(a,b,c){if(!c||a===c)return a[0]+=b,a[1]+=b,a[2]+=b,a;c[0]=a[0]+b;c[1]=a[1]+b;c[2]=a[2]+b;return c},\n  normalize:function(a,b){b||(b=a);var c=a[0],e=a[1],f=a[2],d=Math.sqrt(c*c+e*e+f*f);if(d){if(1===d)return b[0]=c,b[1]=e,b[2]=f,b}else return b[0]=0,b[1]=0,b[2]=0,b;d=1/d;b[0]=c*d;b[1]=e*d;b[2]=f*d;return b},\n  cross:function(a,b,c){c||(c=a);var e=a[0],f=a[1],a=a[2],d=b[0],g=b[1],b=b[2];c[0]=f*b-a*g;c[1]=a*d-e*b;c[2]=e*g-f*d;return c},\n  dot:function(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]},\n  str:function (a) {return '['+a[0]+', '+a[1]+', '+a[2]+']'},\n  length:function (vec) { var x = vec[0], y = vec[1], z = vec[2]; return Math.sqrt(x * x + y * y + z * z);},\n  reflect:function(i,n,r){return vec3.sub(i,vec3.scale(n,2*vec3.dot(n,i),r),r)},\n  rotateXYZ:function(v,x,y,z){\n    var m=mat4.create(mat4.identity());\n    mat4.rotateX(m,x);\n    mat4.rotateY(m,y);\n    mat4.rotateZ(m,z);\n    return mat4.multiplyVec3(m,v);\n  },\n  mix:function(x,y,a){\n    return vec3.add(\n      vec3.scale(x,1-a,vec3.create()),\n      vec3.scale(y,a,vec3.create()),\n      vec3.create());\n  }\n}\nmat4={\n  create:function(a){var b=new Array(16);a&&(b[0]=a[0],b[1]=a[1],b[2]=a[2],b[3]=a[3],b[4]=a[4],b[5]=a[5],b[6]=a[6],b[7]=a[7],b[8]=a[8],b[9]=a[9],b[10]=a[10],b[11]=a[11],b[12]=a[12],b[13]=a[13],b[14]=a[14],b[15]=a[15]);return b},\n  identity:function(a){a||(a=mat4.create());a[0]=1;a[1]=0;a[2]=0;a[3]=0;a[4]=0;a[5]=1;a[6]=0;a[7]=0;a[8]=0;a[9]=0;a[10]=1;a[11]=0;a[12]=0;a[13]=0;a[14]=0;a[15]=1;return a},\n  multiplyVec3:function(a,b,c){c||(c=b);var d=b[0],e=b[1],b=b[2];c[0]=a[0]*d+a[4]*e+a[8]*b+a[12];c[1]=a[1]*d+a[5]*e+a[9]*b+a[13];c[2]=a[2]*d+a[6]*e+a[10]*b+a[14];return c},\n  multiplyDelta3: function(mat, vec) {\n    var a_ = mat4.multiplyVec3(mat, [0, 0, 0]);\n    var b_ = mat4.multiplyVec3(mat, vec3.create(vec));\n    return vec3.sub(b_, a_);\n  },\n  rotateX:function(b,c,a){var d=Math.sin(c),c=Math.cos(c),e=b[4],f=b[5],g=b[6],h=b[7],i=b[8],j=b[9],k=b[10],l=b[11];a?b!==a&&(a[0]=b[0],a[1]=b[1],a[2]=b[2],a[3]=b[3],a[12]=b[12],a[13]=b[13],a[14]=b[14],a[15]=b[15]):a=b;a[4]=e*c+i*d;a[5]=f*c+j*d;a[6]=g*c+k*d;a[7]=h*c+l*d;a[8]=e*-d+i*c;a[9]=f*-d+j*c;a[10]=g*-d+k*c;a[11]=h*-d+l*c;return a},\n  rotateY:function(b,c,a){var d=Math.sin(c),c=Math.cos(c),e=b[0],f=b[1],g=b[2],h=b[3],i=b[8],j=b[9],k=b[10],l=b[11];a?b!==a&&(a[4]=b[4],a[5]=b[5],a[6]=b[6],a[7]=b[7],a[12]=b[12],a[13]=b[13],a[14]=b[14],a[15]=b[15]):a=b;a[0]=e*c+i*-d;a[1]=f*c+j*-d;a[2]=g*c+k*-d;a[3]=h*c+l*-d;a[8]=e*d+i*c;a[9]=f*d+j*c;a[10]=g*d+k*c;a[11]=h*d+l*c;return a},\n  rotateZ:function(b,c,a){var d=Math.sin(c),c=Math.cos(c),e=b[0],f=b[1],g=b[2],h=b[3],i=b[4],j=b[5],k=b[6],l=b[7];a?b!==a&&(a[8]=b[8],a[9]=b[9],a[10]=b[10],a[11]=b[11],a[12]=b[12],a[13]=b[13],a[14]=b[14],a[15]=b[15]):a=b;a[0]=e*c+i*d;a[1]=f*c+j*d;a[2]=g*c+k*d;a[3]=h*c+l*d;a[4]=e*-d+i*c;a[5]=f*-d+j*c;a[6]=g*-d+k*c;a[7]=h*-d+l*c;return a},\n  translate:function(a,c,b){var d=c[0],e=c[1],c=c[2],f,g,h,i,j,k,l,m,n,o,p,q;if(!b||a===b)return a[12]=a[0]*d+a[4]*e+a[8]*c+a[12],a[13]=a[1]*d+a[5]*e+a[9]*c+a[13],a[14]=a[2]*d+a[6]*e+a[10]*c+a[14],a[15]=a[3]*d+a[7]*e+a[11]*c+a[15],a;f=a[0];g=a[1];h=a[2];i=a[3];j=a[4];k=a[5];l=a[6];m=a[7];n=a[8];o=a[9];p=a[10];q=a[11];b[0]=f;b[1]=g;b[2]=h;b[3]=i;b[4]=j;b[5]=k;b[6]=l;b[7]=m;b[8]=n;b[9]=o;b[10]=p;b[11]=q;b[12]=f*d+j*e+n*c+a[12];b[13]=g*d+k*e+o*c+a[13];b[14]=h*d+l*e+p*c+a[14];b[15]=i*d+m*e+q*c+a[15];return b},\n  scale:function(a,c,b){var d=c[0],e=c[1],c=c[2];if(!b||a===b)return a[0]*=d,a[1]*=d,a[2]*=d,a[3]*=d,a[4]*=e,a[5]*=e,a[6]*=e,a[7]*=e,a[8]*=c,a[9]*=c,a[10]*=c,a[11]*=c,a;b[0]=a[0]*d;b[1]=a[1]*d;b[2]=a[2]*d;b[3]=a[3]*d;b[4]=a[4]*e;b[5]=a[5]*e;b[6]=a[6]*e;b[7]=a[7]*e;b[8]=a[8]*c;b[9]=a[9]*c;b[10]=a[10]*c;b[11]=a[11]*c;b[12]=a[12];b[13]=a[13];b[14]=a[14];b[15]=a[15];return b},\n  inverse:function(c,a){a||(a=c);var d=c[0],e=c[1],f=c[2],g=c[3],h=c[4],i=c[5],j=c[6],k=c[7],l=c[8],m=c[9],n=c[10],o=c[11],p=c[12],q=c[13],r=c[14],s=c[15],t=d*i-e*h,u=d*j-f*h,v=d*k-g*h,w=e*j-f*i,x=e*k-g*i,y=f*k-g*j,z=l*q-m*p,A=l*r-n*p,B=l*s-o*p,C=m*r-n*q,D=m*s-o*q,E=n*s-o*r,b=t*E-u*D+v*C+w*B-x*A+y*z;if(!b)return null;b=1/b;a[0]=(i*E-j*D+k*C)*b;a[1]=(-e*E+f*D-g*C)*b;a[2]=(q*y-r*x+s*w)*b;a[3]=(-m*y+n*x-o*w)*b;a[4]=(-h*E+j*B-k*A)*b;a[5]=(d*E-f*B+g*A)*b;a[6]=(-p*y+r*v-s*u)*b;a[7]=(l*y-n*v+o*u)*b;a[8]=(h*D-i*B+k*z)*b;a[9]=(-d*D+e*B-g*z)*b;a[10]=(p*x-q*v+s*t)*b;a[11]=(-l*x+m*v-o*t)*b;a[12]=(-h*C+i*A-j*z)*b;a[13]=(d*C-e*A+f*z)*b;a[14]=(-p*w+q*u-r*t)*b;a[15]=(l*w-m*u+n*t)*b;return a},\n  multiply:function(a,b,c){c||(c=a);var d=a[0],e=a[1],f=a[2],g=a[3],h=a[4],i=a[5],j=a[6],k=a[7],l=a[8],m=a[9],n=a[10],o=a[11],p=a[12],q=a[13],r=a[14],a=a[15],s=b[0],t=b[1],u=b[2],v=b[3],w=b[4],x=b[5],y=b[6],z=b[7],A=b[8],B=b[9],C=b[10],D=b[11],E=b[12],F=b[13],G=b[14],b=b[15];c[0]=s*d+t*h+u*l+v*p;c[1]=s*e+t*i+u*m+v*q;c[2]=s*f+t*j+u*n+v*r;c[3]=s*g+t*k+u*o+v*a;c[4]=w*d+x*h+y*l+z*p;c[5]=w*e+x*i+y*m+z*q;c[6]=w*f+x*j+y*n+z*r;c[7]=w*g+x*k+y*o+z*a;c[8]=A*d+B*h+C*l+D*p;c[9]=A*e+B*i+C*m+D*q;c[10]=A*f+B*j+C*n+D*r;c[11]=A*g+B*k+C*o+D*a;c[12]=E*d+F*h+G*l+b*p;c[13]=E*e+F*i+G*m+b*q;c[14]=E*f+F*j+G*n+b*r;c[15]=E*g+F*k+G*o+b*a;return c}\n}\n\n/* ray.js */\n\nvar inLimits, intersect, intersectItem, isValid, launchRay, lightning, mod, objects, processPixel, sign, solve_eq2,\n__slice = [].slice;\n\nvar epsilon = 0.0001;\n\nfunction mod(x, n) {\n  return ((x % n) + n) % n;\n}\n\nfunction sign(x) {\n  if (x > 0) {\n    return 1;\n  } else if (x === 0) {\n    return 0;\n  } else {\n    return -1;\n  }\n}\n\nfunction solve_eq2(a, b, c) {\n  var delta = b * b - 4 * a * c;\n  if (delta < 0) {\n    return [];\n  }\n  var sqDelta = Math.sqrt(delta);\n  return [(-b - sqDelta) / (2 * a), (-b + sqDelta) / (2 * a)];\n}\n\n/*\n * Objects\n */\n\nobjects = {};\n\nobjects.plane = {\n  solutions: function(item, ray_) {\n    if (ray_.dir[2] !== 0) {\n      return [-ray_.origin[2] / ray_.dir[2]];\n    } else {\n      return [];\n    }\n  },\n  pos2d: function(item, pos_, width, height) {\n    return [width / 2 - pos_[1], height / 2 - pos_[0]];\n  },\n  normal: function(item, ray_, pos_) {\n    return [0, 0, -sign(ray_.dir[2])];\n  }\n};\n\nobjects.sphere = {\n  solutions: function(item, ray_) {\n    var a, b, c;\n    a = vec3.dot(ray_.dir, ray_.dir);\n    b = 2 * vec3.dot(ray_.origin, ray_.dir);\n    c = (vec3.dot(ray_.origin, ray_.origin)) - item.radius2;\n    return solve_eq2(a, b, c);\n  },\n  pos2d: function(item, pos_, width, height) {\n    var phi, theta, x, y;\n    pos_ = vec3.normalize(pos_, vec3.create());\n    phi = Math.acos(pos_[2]);\n    y = phi / Math.PI * height;\n    theta = Math.acos(pos_[1] / Math.sin(phi)) / (2 * Math.PI);\n    if (pos_[0] > 0) {\n      theta = 1 - theta;\n    }\n    x = theta * width;\n    return [x, y];\n  },\n  normal: function(item, ray_, pos_) {\n    return pos_;\n  }\n};\n\nobjects.cone = {\n  solutions: function(item, ray_) {\n    var a, b, c;\n    a = ray_.dir[0] * ray_.dir[0] + ray_.dir[1] * ray_.dir[1] - item.radius * ray_.dir[2] * ray_.dir[2];\n    b = 2 * (ray_.origin[0] * ray_.dir[0] + ray_.origin[1] * ray_.dir[1] - item.radius * ray_.origin[2] * ray_.dir[2]);\n    c = ray_.origin[0] * ray_.origin[0] + ray_.origin[1] * ray_.origin[1] - item.radius * ray_.origin[2] * ray_.origin[2];\n    return solve_eq2(a, b, c);\n  },\n  pos2d: objects.sphere.pos2d,\n  normal: function(item, ray_, pos_) {\n    var normal;\n    normal = vec3.create(pos_);\n    normal[2] = -normal[2] * Math.tan(item.radius2);\n    return normal;\n  }\n};\n\nobjects.cylinder = {\n  solutions: function(item, ray_) {\n    var a, b, c;\n    a = ray_.dir[0] * ray_.dir[0] + ray_.dir[1] * ray_.dir[1];\n    b = 2 * (ray_.origin[0] * ray_.dir[0] + ray_.origin[1] * ray_.dir[1]);\n    c = ray_.origin[0] * ray_.origin[0] + ray_.origin[1] * ray_.origin[1] - item.radius2;\n    return solve_eq2(a, b, c);\n  },\n  pos2d: objects.sphere.pos2d,\n  normal: function(item, ray_, pos_) {\n    var normal;\n    normal = vec3.create(pos_);\n    normal[2] = 0;\n    return normal;\n  }\n};\n\nobjects.portal = copy(objects.plane);\n\nobjects.portal.normal = function(item, ray_, pos_) {\n  return [0, 0, 1];\n};\n\nfunction inLimits(limits, pos_) {\n  var _ref, _ref1, _ref2;\n  return (limits[0] <= (_ref = pos_[0]) && _ref <= limits[1]) && (limits[2] <= (_ref1 = pos_[1]) && _ref1 <= limits[3]) && (limits[4] <= (_ref2 = pos_[2]) && _ref2 <= limits[5]);\n};\n\nfunction isValid(ray, distances, item, min_distance) {\n  var distance, pos, pos_, _i, _len;\n  for (_i = 0, _len = distances.length; _i < _len; _i++) {\n    distance = distances[_i];\n    if (!((0 < distance && distance < min_distance))) {\n      continue;\n    }\n    pos = vec3.create();\n    pos = vec3.add(ray.origin, vec3.scale(ray.dir, distance, pos), pos);\n    pos_ = mat4.multiplyVec3(item.inverse, pos, vec3.create());\n    if (inLimits(item.limits, pos_)) {\n      return [pos, pos_, distance];\n    }\n  }\n  return [null, null, null, null];\n};\n\nfunction intersectItem(item, ray, min_distance) {\n  var ray_ = {\n    dir: vec3.normalize(mat4.multiplyDelta3(item.inverse, ray.dir)),\n    origin: mat4.multiplyVec3(item.inverse, ray.origin, [0, 0, 0])\n  };\n  var obj = objects[item.type];\n\n  var _ref = isValid(ray, obj.solutions(item, ray_), item, min_distance);\n  var pos = _ref[0];\n  var pos_ = _ref[1];\n  var distance = _ref[2];\n  if(!pos) {\n    return;\n  }\n  var color = item.color;\n  var opacity = item.opacity;\n  var reflect = item.reflect;\n  var dir = ray.dir;\n  if(item.tex != null) {\n    var texture = textures[item.tex];\n    var pos2d = obj.pos2d(item, pos_, texture.width, texture.height);\n    var x = Math.floor(pos2d[0]);\n    var y = Math.floor(pos2d[1]);\n    if(item.tex_rep !== 0) {\n      x = mod(x * item.tex_coef, texture.width);\n      y = mod(y * item.tex_coef, texture.height);\n    }\n    var idx = (texture.width * y + x) * 4;\n    opacity *= texture.data[idx + 3] / 255;\n    color = [texture.data[idx] / 255, texture.data[idx + 1] / 255, texture.data[idx + 2] / 255];\n  }\n  if(item.checkerboard != null) {\n    var pos2d = obj.pos2d(item, pos_, 500, 500);\n    if((mod(pos2d[0] / item.checkerboard, 1) > 0.5) === (mod(pos2d[1] / item.checkerboard, 1) > 0.5)) {\n      color = item.color2;\n    }\n  }\n  if(item.pnoise > 0) {\n    var alpha = perlin(pos_, item.pnoise, item.pnoise_pers, item.pnoise_octave, item.pnoise_freq);\n    color = vec3.mix(color, item.color2, alpha);\n  }\n  if(item.type === 'portal') {\n    var dist = item.radius2 - (pos_[0] * pos_[0] + 2 * pos_[1] * pos_[1]);\n    if(dist < 0) {\n      return;\n    }\n    opacity *= 1 - Math.exp(-dist / 2000);\n    opacity = 1 - opacity;\n    pos = mat4.multiplyVec3(item.other.transform, pos_, vec3.create());\n    dir = vec3.normalize(mat4.multiplyDelta3(item.other.transform, vec3.create(ray_.dir)));\n  }\n  var normal = obj.normal(item, ray_, pos_);\n  normal = vec3.normalize(mat4.multiplyDelta3(item.transform, vec3.create(normal)));\n  if(opacity === 0) {\n    return;\n  }\n  return {\n    distance: distance,\n    pos: pos,\n    normal: normal,\n    color: color,\n    item: item,\n    opacity: opacity,\n    reflect: reflect,\n    dir: dir\n  };\n};\n\nfunction intersect(ray, min_distance) {\n  if(min_distance == null) {\n    min_distance = Infinity;\n  }\n  var min_isect = null;\n  for(i = 0; i < self.scene.item.length; i++) {\n    var item = self.scene.item[i];\n    var isect = intersectItem(item, ray, min_distance);\n    if(isect && (!min_isect || isect.distance < min_isect.distance)) {\n      min_isect = isect;\n      min_distance = isect.distance;\n    }\n  }\n  return min_isect;\n};\n\nfunction lightning(isect) {\n  var color;\n  if(self.scene.light != null) {\n    color = [0, 0, 0];\n  } else {\n    color = vec3.create(isect.color);\n  }\n  for(var i = 0; i < self.scene.light.length; i++) {\n    var light = self.scene.light[i];\n    var dir = vec3.sub(light.coords, isect.pos, vec3.create());\n    var min_distance = vec3.length(dir);\n    vec3.normalize(dir);\n    var pos = vec3.create();\n    pos = vec3.add(isect.pos, vec3.scale(dir, epsilon, pos), pos);\n    var ray = {\n      origin: vec3.create(pos),\n      dir: vec3.create(dir)\n    };\n    if(!intersect(ray, min_distance)) {\n      var shade = Math.abs(vec3.dot(isect.normal, ray.dir));\n      var add_color = vec3.create(isect.color);\n      add_color = vec3.plus(add_color, isect.item.brightness);\n      add_color = vec3.mul(add_color, light.color);\n      vec3.scale(add_color, shade);\n      add_color = vec3.scale(add_color, isect.item.intensity);\n      vec3.add(color, add_color);\n    }\n  }\n  var ambiant = vec3.create(isect.color);\n  vec3.mul(ambiant, self.scene.global.l_color);\n  vec3.add(color, ambiant);\n  return color;\n};\n\nfunction launchRay(ray, count) {\n  var color = [0, 0, 0];\n  var isect = intersect(ray);\n  if(isect) {\n    color = lightning(isect);\n    if(count > 0 && isect.opacity < 1) {\n      var ray2 = {\n        origin: vec3.add(isect.pos, vec3.scale(isect.dir, epsilon, vec3.create()), vec3.create()),\n        dir: vec3.normalize(vec3.create(isect.dir))\n      };\n      color = vec3.mix(color, launchRay(ray2, count - 1), 1 - isect.opacity);\n    }\n    if(count > 0 && isect.reflect > 0) {\n      var ray2 = {\n        origin: vec3.add(isect.pos, vec3.scale(isect.normal, epsilon, vec3.create()), vec3.create()),\n        dir: vec3.normalize(vec3.reflect(ray.dir, vec3.normalize(isect.normal), vec3.create()))\n      };\n      color = vec3.mix(color, launchRay(ray2, count - 1), isect.reflect);\n    }\n  }\n  return color;\n};\n\nfunction processPixel(x, y) {\n  var ray = {\n    origin: vec3.create(self.scene.eye.coords),\n    dir: vec3.normalize([self.scene.global.distscreen, x, y])\n  };\n  ray.dir = vec3.normalize(vec3.rotateXYZ.apply(vec3, [ray.dir].concat(__slice.call(self.scene.eye.rot))));\n  return launchRay(ray, self.scene.global.max_reflect);\n};\n\nfunction process(x, y, upscale, randomRays) {\n  var color = [0, 0, 0];\n  vec3.add(color, processPixel((self.scene.global.W / 2 - x) / upscale, (self.scene.global.H / 2 - y) / upscale));\n  for(var i = 0; i < randomRays; i++) {\n    vec3.add(color, processPixel((self.scene.global.W / 2 - x + Math.random() - 0.5) / upscale, (self.scene.global.H / 2 - y + Math.random() - 0.5) / upscale));\n  }\n  return vec3.scale(color, 1 / (1 + randomRays));\n};\n\n/* perlin.js */\n\n// Generated by CoffeeScript 1.7.1\n(function() {\n  \n// http://asserttrue.blogspot.com/2011/12/perlin-noise-in-javascript_31.html\n// This is a port of Ken Perlin's Java code. The\n// original Java code is at http://cs.nyu.edu/%7Eperlin/noise/.\n// Note that in this version, a number from 0 to 1 is returned.\nPerlinNoise = new function() {\n\nthis.noise = function(x, y, z) {\n\n   var p = new Array(512)\n   var permutation = [ 151,160,137,91,90,15,\n   131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,\n   190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,\n   88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,\n   77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,\n   102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,\n   135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,\n   5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,\n   223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,\n   129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,\n   251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,\n   49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,\n   138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];\n   for (var i=0; i < 256 ; i++)\n    p[256+i] = p[i] = permutation[i];\n\n    var X = Math.floor(x) & 255,                  // FIND UNIT CUBE THAT\n          Y = Math.floor(y) & 255,                  // CONTAINS POINT.\n          Z = Math.floor(z) & 255;\n      x -= Math.floor(x);                                // FIND RELATIVE X,Y,Z\n      y -= Math.floor(y);                                // OF POINT IN CUBE.\n      z -= Math.floor(z);\n      var    u = fade(x),                                // COMPUTE FADE CURVES\n             v = fade(y),                                // FOR EACH OF X,Y,Z.\n             w = fade(z);\n      var A = p[X  ]+Y, AA = p[A]+Z, AB = p[A+1]+Z,      // HASH COORDINATES OF\n          B = p[X+1]+Y, BA = p[B]+Z, BB = p[B+1]+Z;      // THE 8 CUBE CORNERS,\n\n      return scale(lerp(w, lerp(v, lerp(u, grad(p[AA  ], x  , y  , z   ),  // AND ADD\n                                     grad(p[BA  ], x-1, y  , z   )), // BLENDED\n                             lerp(u, grad(p[AB  ], x  , y-1, z   ),  // RESULTS\n                                     grad(p[BB  ], x-1, y-1, z   ))),// FROM  8\n                     lerp(v, lerp(u, grad(p[AA+1], x  , y  , z-1 ),  // CORNERS\n                                     grad(p[BA+1], x-1, y  , z-1 )), // OF CUBE\n                             lerp(u, grad(p[AB+1], x  , y-1, z-1 ),\n                                     grad(p[BB+1], x-1, y-1, z-1 )))));\n   }\n   function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }\n   function lerp( t, a, b) { return a + t * (b - a); }\n   function grad(hash, x, y, z) {\n      var h = hash & 15;                      // CONVERT LO 4 BITS OF HASH CODE\n      var u = h<8 ? x : y,                 // INTO 12 GRADIENT DIRECTIONS.\n             v = h<4 ? y : h==12||h==14 ? x : z;\n      return ((h&1) == 0 ? u : -u) + ((h&2) == 0 ? v : -v);\n   }\n   function scale(n) { return n; /*return (1 + n)/2;*/ }\n};\n  var clamp;\n\n  clamp = function(x, min, max) {\n    if (x < min) {\n      return min;\n    }\n    if (x > max) {\n      return max;\n    }\n    return x;\n  };\n\n  function perlin(pos, id, persistence, octaves, frequence) {\n    var amplitude, frequency, i, noise, _i;\n    pos = vec3.scale(pos, frequence, vec3.create());\n    noise = 0;\n    frequency = 1;\n    amplitude = 1;\n    for (i = _i = 0; 0 <= octaves ? _i < octaves : _i > octaves; i = 0 <= octaves ? ++_i : --_i) {\n      noise += amplitude * PerlinNoise.noise(pos[0] * frequency, pos[1] * frequency, pos[2] * frequency);\n      frequency *= 2;\n      amplitude *= persistence;\n    }\n    if (id === 2) {\n      noise *= 20;\n      noise = noise - Math.floor(noise);\n    }\n    if (id === 3) {\n      noise = Math.cos(noise);\n    }\n    return (clamp(noise, -1, 1) + 1) / 2;\n  };\n\n}).call(this);\n\n/* worker.js */\n\nscene = null;\nself.textures = {};\n\nfunction render(scene) {\n  self.scene = scene;\n\n  if(scene.global.highdef == null) {\n    scene.global.highdef = [];\n  }\n  if(scene.global.highdef[0] == null) {\n    scene.global.highdef[0] = 1;\n  }\n  if(scene.global.highdef[1] == null) {\n    scene.global.highdef[1] = 0;\n  }\n\n  scene.global.upscale = scene.global.highdef[0];\n  scene.global.randomRays = scene.global.highdef[1];\n\n  if(scene.global.distscreen == null) {\n    scene.global.distscreen = 1000;\n  }\n  if(scene.global.max_reflect == null) {\n    scene.global.max_reflect = 10;\n  }\n  if(scene.global.l_color == null) {\n    scene.global.l_color = [0, 0, 0];\n  }\n\n  scene.global.l_intensity = (scene.global.l_intensity != null ? scene.global.l_intensity : 0) / 100;\n  vec3.scale(scene.global.l_color, scene.global.l_intensity);\n\n  scene.eye.rot = vec3.scale(scene.eye.rot != null ? scene.eye.rot : [0, 0, 0], Math.PI / 180);\n\n  scene.global.W = scene.global.width * scene.global.upscale;\n  scene.global.H = scene.global.height * scene.global.upscale;\n  \n  var groups = {};\n  var portals = {};\n\n  if(scene.light == null) {\n    scene.light = [];\n  }\n  for(var i = 0; i < scene.light.length; i++) {\n    var light = scene.light[i];\n    if(light.coords == null) {\n      light.coords = [0, 0, 0];\n    }\n    if(light.color == null) {\n      light.color = [1, 1, 1];\n    }\n  }\n  /* Items */\n  for(var i = 0; i < scene.item.length; i++) {\n    var item = scene.item[i];\n\n    if(item.color == null) {\n      item.color = [1, 1, 1];\n    }\n    if(item.color2 == null) {\n      item.color2 = item.color.map(function(x) {\n        return 1 - x;\n      });\n    }\n    if(item.coords == null) {\n      item.coords = [0, 0, 0];\n    }\n    item.rot = vec3.scale(item.rot != null ? item.rot : [0, 0, 0], Math.PI / 180);\n    item.brightness = (item.brightness != null ? item.brightness : 0) / 100;\n    item.intensity = (item.intensity != null ? item.intensity : 100) / 100;\n    item.reflect = (item.reflect != null ? item.reflect : 0) / 100;\n    item.opacity = (item.opacity != null ? item.opacity : 100) / 100;\n    if(item.radius == null) {\n      item.radius = 2;\n    }\n    if(item.limits == null) {\n      item.limits = [0, 0, 0, 0, 0, 0];\n    }\n    for(var j = 0; j < 3; j++) {\n      if(item.limits[2 * j] >= item.limits[2 * j + 1]) {\n        item.limits[2 * j] = -Infinity;\n        item.limits[2 * j + 1] = Infinity;\n      }\n    }\n    if(item.pnoise == null) {\n      item.pnoise = 0;\n    }\n    if(item.pnoise_freq == null) {\n      item.pnoise_freq = 1;\n    }\n    if(item.pnoise_pers == null) {\n      item.pnoise_pers = 1;\n    }\n    if(item.pnoise_octave == null) {\n      item.pnoise_octave = 1;\n    }\n    item.transform = mat4.identity();\n    mat4.translate(item.transform, item.coords);\n    mat4.rotateX(item.transform, item.rot[0]);\n    mat4.rotateY(item.transform, item.rot[1]);\n    mat4.rotateZ(item.transform, item.rot[2]);\n    if(item.group_id) {\n      if(groups[item.group_id] == null) {\n        groups[item.group_id] = [];\n      }\n      groups[item.group_id].push(item);\n    }\n    if(item.portal_id != null) {\n      if (!(item.portal_id in portals)) {\n        portals[item.portal_id] = [];\n      }\n      portals[item.portal_id].push(item);\n    }\n  }\n  /* Portals */\n  for(var id in portals) {\n    portals[id][0].other = portals[id][1];\n    portals[id][1].other = portals[id][0];\n  }\n  /* Groups */\n  if(scene.group == null) {\n    scene.group = [];\n  }\n  for(var i = 0; i < scene.group.length; i++) {\n    var group = scene.group[i];\n    if(group.size_mul == null) {\n      group.size_mul = 1;\n    }\n    group.rot = vec3.scale(group.rot != null ? group.rot : [0, 0, 0], Math.PI / 180);\n    if(group.coords == null) {\n      group.coords = [0, 0, 0];\n    }\n    group.transform = mat4.identity();\n    mat4.scale(group.transform, [group.size_mul, group.size_mul, group.size_mul]);\n    mat4.translate(group.transform, group.coords);\n    mat4.rotateX(group.transform, group.rot[0]);\n    mat4.rotateY(group.transform, group.rot[1]);\n    mat4.rotateZ(group.transform, group.rot[2]);\n    if (!(group.id in groups)) {\n      continue;\n    }\n    for(var j = 0; j < groups[group.id].length; j++) {\n      var item_raw = groups[group.id][j];\n      var item = copy(item_raw);\n      delete item.group_id;\n      var t = mat4.create(group.transform);\n      mat4.multiply(t, item.transform);\n      item.transform = t;\n      scene.item.push(item);\n    }\n  }\n  scene.item = scene.item.filter(function(item) {\n    return item.group_id == null;\n  });\n\n  /* Textures */\n  for(var i = 0 ; i < scene.item.length; i++) {\n    var item = scene.item[i];\n    item.coords = mat4.multiplyVec3(item.transform, [0, 0, 0]);\n    item.inverse = mat4.inverse(item.transform, mat4.create());\n    item.radius2 = item.radius * item.radius;\n    if(item.tex != null) {\n      if(item.tex_rep == null) {\n        item.tex_rep = 0;\n      }\n      if(item.tex_coef == null) {\n        item.tex_coef = 1;\n      }\n    }\n  }\n\n  /* Render */\n  var result = []\n  for(var y = scene.job.begin_y; y < scene.job.end_y; y++) {\n    for(var x = scene.job.begin_x; x < scene.job.end_x; x++) {\n      var color = process(y, x, scene.global.upscale, scene.global.randomRays);\n      result.push(~~(color[0] * 255));\n      result.push(~~(color[1] * 255));\n      result.push(~~(color[2] * 255));\n    }\n  }\n  return result;\n}\n\n/* To run on crowdprocess */\nfunction Run(d) {\n  var scene = %%SCENE%%;\n  scene.job = d;\n  return {\n    id: d.id,\n    data: render(scene)\n  };    \n}".replace("%%SCENE%%", JSON.stringify(scene));
+    var program = "var scene, textures_remaining,\n__slice = [].slice;\n\nvar self = {};\n\nfunction copy(obj) {\n  if(Array.isArray(obj)) {\n    return obj.slice();\n  } else if (obj instanceof Object && !(obj instanceof Function)) {\n    var new_obj = {};\n    for(var key in obj) {\n      var val = obj[key];\n      new_obj[key] = copy(val);\n    }\n    return new_obj;\n  } else {\n    return obj;\n  }\n};\n\n/* glMatrix */\n\nvar cos=Math.cos, sin=Math.sin;\nvec3={\n  create:function(a){var b=new Array(3);a?(b[0]=a[0],b[1]=a[1],b[2]=a[2]):b[0]=b[1]=b[2]=0;return b},\n  set:function(a,b){b[0]=a[0];b[1]=a[1];b[2]=a[2];return b},\n  add:function(a,b,c){if(!c||a===c)return a[0]+=b[0],a[1]+=b[1],a[2]+=b[2],a;c[0]=a[0]+b[0];c[1]=a[1]+b[1];c[2]=a[2]+b[2];return c},\n  mul:function(a,b,c){if(!c||a===c)return a[0]*=b[0],a[1]*=b[1],a[2]*=b[2],a;c[0]=a[0]*b[0];c[1]=a[1]*b[1];c[2]=a[2]*b[2];return c},\n  sub:function(a,b,c){if(!c||a===c)return a[0]-=b[0],a[1]-=b[1],a[2]-=b[2],a;c[0]=a[0]-b[0];c[1]=a[1]-b[1];c[2]=a[2]-b[2];return c},\n  negate:function(a,b){b||(b=a);b[0]=-a[0];b[1]=-a[1];b[2]=-a[2];return b},\n  scale:function(a,b,c){if(!c||a===c)return a[0]*=b,a[1]*=b,a[2]*=b,a;c[0]=a[0]*b;c[1]=a[1]*b;c[2]=a[2]*b;return c},\n  plus:function(a,b,c){if(!c||a===c)return a[0]+=b,a[1]+=b,a[2]+=b,a;c[0]=a[0]+b;c[1]=a[1]+b;c[2]=a[2]+b;return c},\n  normalize:function(a,b){b||(b=a);var c=a[0],e=a[1],f=a[2],d=Math.sqrt(c*c+e*e+f*f);if(d){if(1===d)return b[0]=c,b[1]=e,b[2]=f,b}else return b[0]=0,b[1]=0,b[2]=0,b;d=1/d;b[0]=c*d;b[1]=e*d;b[2]=f*d;return b},\n  cross:function(a,b,c){c||(c=a);var e=a[0],f=a[1],a=a[2],d=b[0],g=b[1],b=b[2];c[0]=f*b-a*g;c[1]=a*d-e*b;c[2]=e*g-f*d;return c},\n  dot:function(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]},\n  str:function (a) {return '['+a[0]+', '+a[1]+', '+a[2]+']'},\n  length:function (vec) { var x = vec[0], y = vec[1], z = vec[2]; return Math.sqrt(x * x + y * y + z * z);},\n  reflect:function(i,n,r){return vec3.sub(i,vec3.scale(n,2*vec3.dot(n,i),r),r)},\n  rotateXYZ:function(v,x,y,z){\n    var m=mat4.create(mat4.identity());\n    mat4.rotateX(m,x);\n    mat4.rotateY(m,y);\n    mat4.rotateZ(m,z);\n    return mat4.multiplyVec3(m,v);\n  },\n  mix:function(x,y,a){\n    return vec3.add(\n      vec3.scale(x,1-a,vec3.create()),\n      vec3.scale(y,a,vec3.create()),\n      vec3.create());\n  }\n}\nmat4={\n  create:function(a){var b=new Array(16);a&&(b[0]=a[0],b[1]=a[1],b[2]=a[2],b[3]=a[3],b[4]=a[4],b[5]=a[5],b[6]=a[6],b[7]=a[7],b[8]=a[8],b[9]=a[9],b[10]=a[10],b[11]=a[11],b[12]=a[12],b[13]=a[13],b[14]=a[14],b[15]=a[15]);return b},\n  identity:function(a){a||(a=mat4.create());a[0]=1;a[1]=0;a[2]=0;a[3]=0;a[4]=0;a[5]=1;a[6]=0;a[7]=0;a[8]=0;a[9]=0;a[10]=1;a[11]=0;a[12]=0;a[13]=0;a[14]=0;a[15]=1;return a},\n  multiplyVec3:function(a,b,c){c||(c=b);var d=b[0],e=b[1],b=b[2];c[0]=a[0]*d+a[4]*e+a[8]*b+a[12];c[1]=a[1]*d+a[5]*e+a[9]*b+a[13];c[2]=a[2]*d+a[6]*e+a[10]*b+a[14];return c},\n  multiplyDelta3: function(mat, vec) {\n    var a_ = mat4.multiplyVec3(mat, [0, 0, 0]);\n    var b_ = mat4.multiplyVec3(mat, vec3.create(vec));\n    return vec3.sub(b_, a_);\n  },\n  rotateX:function(b,c,a){var d=Math.sin(c),c=Math.cos(c),e=b[4],f=b[5],g=b[6],h=b[7],i=b[8],j=b[9],k=b[10],l=b[11];a?b!==a&&(a[0]=b[0],a[1]=b[1],a[2]=b[2],a[3]=b[3],a[12]=b[12],a[13]=b[13],a[14]=b[14],a[15]=b[15]):a=b;a[4]=e*c+i*d;a[5]=f*c+j*d;a[6]=g*c+k*d;a[7]=h*c+l*d;a[8]=e*-d+i*c;a[9]=f*-d+j*c;a[10]=g*-d+k*c;a[11]=h*-d+l*c;return a},\n  rotateY:function(b,c,a){var d=Math.sin(c),c=Math.cos(c),e=b[0],f=b[1],g=b[2],h=b[3],i=b[8],j=b[9],k=b[10],l=b[11];a?b!==a&&(a[4]=b[4],a[5]=b[5],a[6]=b[6],a[7]=b[7],a[12]=b[12],a[13]=b[13],a[14]=b[14],a[15]=b[15]):a=b;a[0]=e*c+i*-d;a[1]=f*c+j*-d;a[2]=g*c+k*-d;a[3]=h*c+l*-d;a[8]=e*d+i*c;a[9]=f*d+j*c;a[10]=g*d+k*c;a[11]=h*d+l*c;return a},\n  rotateZ:function(b,c,a){var d=Math.sin(c),c=Math.cos(c),e=b[0],f=b[1],g=b[2],h=b[3],i=b[4],j=b[5],k=b[6],l=b[7];a?b!==a&&(a[8]=b[8],a[9]=b[9],a[10]=b[10],a[11]=b[11],a[12]=b[12],a[13]=b[13],a[14]=b[14],a[15]=b[15]):a=b;a[0]=e*c+i*d;a[1]=f*c+j*d;a[2]=g*c+k*d;a[3]=h*c+l*d;a[4]=e*-d+i*c;a[5]=f*-d+j*c;a[6]=g*-d+k*c;a[7]=h*-d+l*c;return a},\n  translate:function(a,c,b){var d=c[0],e=c[1],c=c[2],f,g,h,i,j,k,l,m,n,o,p,q;if(!b||a===b)return a[12]=a[0]*d+a[4]*e+a[8]*c+a[12],a[13]=a[1]*d+a[5]*e+a[9]*c+a[13],a[14]=a[2]*d+a[6]*e+a[10]*c+a[14],a[15]=a[3]*d+a[7]*e+a[11]*c+a[15],a;f=a[0];g=a[1];h=a[2];i=a[3];j=a[4];k=a[5];l=a[6];m=a[7];n=a[8];o=a[9];p=a[10];q=a[11];b[0]=f;b[1]=g;b[2]=h;b[3]=i;b[4]=j;b[5]=k;b[6]=l;b[7]=m;b[8]=n;b[9]=o;b[10]=p;b[11]=q;b[12]=f*d+j*e+n*c+a[12];b[13]=g*d+k*e+o*c+a[13];b[14]=h*d+l*e+p*c+a[14];b[15]=i*d+m*e+q*c+a[15];return b},\n  scale:function(a,c,b){var d=c[0],e=c[1],c=c[2];if(!b||a===b)return a[0]*=d,a[1]*=d,a[2]*=d,a[3]*=d,a[4]*=e,a[5]*=e,a[6]*=e,a[7]*=e,a[8]*=c,a[9]*=c,a[10]*=c,a[11]*=c,a;b[0]=a[0]*d;b[1]=a[1]*d;b[2]=a[2]*d;b[3]=a[3]*d;b[4]=a[4]*e;b[5]=a[5]*e;b[6]=a[6]*e;b[7]=a[7]*e;b[8]=a[8]*c;b[9]=a[9]*c;b[10]=a[10]*c;b[11]=a[11]*c;b[12]=a[12];b[13]=a[13];b[14]=a[14];b[15]=a[15];return b},\n  inverse:function(c,a){a||(a=c);var d=c[0],e=c[1],f=c[2],g=c[3],h=c[4],i=c[5],j=c[6],k=c[7],l=c[8],m=c[9],n=c[10],o=c[11],p=c[12],q=c[13],r=c[14],s=c[15],t=d*i-e*h,u=d*j-f*h,v=d*k-g*h,w=e*j-f*i,x=e*k-g*i,y=f*k-g*j,z=l*q-m*p,A=l*r-n*p,B=l*s-o*p,C=m*r-n*q,D=m*s-o*q,E=n*s-o*r,b=t*E-u*D+v*C+w*B-x*A+y*z;if(!b)return null;b=1/b;a[0]=(i*E-j*D+k*C)*b;a[1]=(-e*E+f*D-g*C)*b;a[2]=(q*y-r*x+s*w)*b;a[3]=(-m*y+n*x-o*w)*b;a[4]=(-h*E+j*B-k*A)*b;a[5]=(d*E-f*B+g*A)*b;a[6]=(-p*y+r*v-s*u)*b;a[7]=(l*y-n*v+o*u)*b;a[8]=(h*D-i*B+k*z)*b;a[9]=(-d*D+e*B-g*z)*b;a[10]=(p*x-q*v+s*t)*b;a[11]=(-l*x+m*v-o*t)*b;a[12]=(-h*C+i*A-j*z)*b;a[13]=(d*C-e*A+f*z)*b;a[14]=(-p*w+q*u-r*t)*b;a[15]=(l*w-m*u+n*t)*b;return a},\n  multiply:function(a,b,c){c||(c=a);var d=a[0],e=a[1],f=a[2],g=a[3],h=a[4],i=a[5],j=a[6],k=a[7],l=a[8],m=a[9],n=a[10],o=a[11],p=a[12],q=a[13],r=a[14],a=a[15],s=b[0],t=b[1],u=b[2],v=b[3],w=b[4],x=b[5],y=b[6],z=b[7],A=b[8],B=b[9],C=b[10],D=b[11],E=b[12],F=b[13],G=b[14],b=b[15];c[0]=s*d+t*h+u*l+v*p;c[1]=s*e+t*i+u*m+v*q;c[2]=s*f+t*j+u*n+v*r;c[3]=s*g+t*k+u*o+v*a;c[4]=w*d+x*h+y*l+z*p;c[5]=w*e+x*i+y*m+z*q;c[6]=w*f+x*j+y*n+z*r;c[7]=w*g+x*k+y*o+z*a;c[8]=A*d+B*h+C*l+D*p;c[9]=A*e+B*i+C*m+D*q;c[10]=A*f+B*j+C*n+D*r;c[11]=A*g+B*k+C*o+D*a;c[12]=E*d+F*h+G*l+b*p;c[13]=E*e+F*i+G*m+b*q;c[14]=E*f+F*j+G*n+b*r;c[15]=E*g+F*k+G*o+b*a;return c}\n}\n\n/* ray.js */\n\nvar inLimits, intersect, intersectItem, isValid, launchRay, lightning, mod, objects, processPixel, sign, solve_eq2,\n__slice = [].slice;\n\nvar epsilon = 0.0001;\n\nfunction mod(x, n) {\n  return ((x % n) + n) % n;\n}\n\nfunction sign(x) {\n  if (x > 0) {\n    return 1;\n  } else if (x === 0) {\n    return 0;\n  } else {\n    return -1;\n  }\n}\n\nfunction solve_eq2(a, b, c) {\n  var delta = b * b - 4 * a * c;\n  if (delta < 0) {\n    return [];\n  }\n  var sqDelta = Math.sqrt(delta);\n  return [(-b - sqDelta) / (2 * a), (-b + sqDelta) / (2 * a)];\n}\n\n/*\n * Objects\n */\n\nobjects = {};\n\nobjects.plane = {\n  solutions: function(item, ray_) {\n    if (ray_.dir[2] !== 0) {\n      return [-ray_.origin[2] / ray_.dir[2]];\n    } else {\n      return [];\n    }\n  },\n  pos2d: function(item, pos_, width, height) {\n    return [width / 2 - pos_[1], height / 2 - pos_[0]];\n  },\n  normal: function(item, ray_, pos_) {\n    return [0, 0, -sign(ray_.dir[2])];\n  }\n};\n\nobjects.sphere = {\n  solutions: function(item, ray_) {\n    var a, b, c;\n    a = vec3.dot(ray_.dir, ray_.dir);\n    b = 2 * vec3.dot(ray_.origin, ray_.dir);\n    c = (vec3.dot(ray_.origin, ray_.origin)) - item.radius2;\n    return solve_eq2(a, b, c);\n  },\n  pos2d: function(item, pos_, width, height) {\n    var phi, theta, x, y;\n    pos_ = vec3.normalize(pos_, vec3.create());\n    phi = Math.acos(pos_[2]);\n    y = phi / Math.PI * height;\n    theta = Math.acos(pos_[1] / Math.sin(phi)) / (2 * Math.PI);\n    if (pos_[0] > 0) {\n      theta = 1 - theta;\n    }\n    x = theta * width;\n    return [x, y];\n  },\n  normal: function(item, ray_, pos_) {\n    return pos_;\n  }\n};\n\nobjects.cone = {\n  solutions: function(item, ray_) {\n    var a, b, c;\n    a = ray_.dir[0] * ray_.dir[0] + ray_.dir[1] * ray_.dir[1] - item.radius * ray_.dir[2] * ray_.dir[2];\n    b = 2 * (ray_.origin[0] * ray_.dir[0] + ray_.origin[1] * ray_.dir[1] - item.radius * ray_.origin[2] * ray_.dir[2]);\n    c = ray_.origin[0] * ray_.origin[0] + ray_.origin[1] * ray_.origin[1] - item.radius * ray_.origin[2] * ray_.origin[2];\n    return solve_eq2(a, b, c);\n  },\n  pos2d: objects.sphere.pos2d,\n  normal: function(item, ray_, pos_) {\n    var normal;\n    normal = vec3.create(pos_);\n    normal[2] = -normal[2] * Math.tan(item.radius2);\n    return normal;\n  }\n};\n\nobjects.cylinder = {\n  solutions: function(item, ray_) {\n    var a, b, c;\n    a = ray_.dir[0] * ray_.dir[0] + ray_.dir[1] * ray_.dir[1];\n    b = 2 * (ray_.origin[0] * ray_.dir[0] + ray_.origin[1] * ray_.dir[1]);\n    c = ray_.origin[0] * ray_.origin[0] + ray_.origin[1] * ray_.origin[1] - item.radius2;\n    return solve_eq2(a, b, c);\n  },\n  pos2d: objects.sphere.pos2d,\n  normal: function(item, ray_, pos_) {\n    var normal;\n    normal = vec3.create(pos_);\n    normal[2] = 0;\n    return normal;\n  }\n};\n\nobjects.portal = copy(objects.plane);\n\nobjects.portal.normal = function(item, ray_, pos_) {\n  return [0, 0, 1];\n};\n\nfunction inLimits(limits, pos_) {\n  var _ref, _ref1, _ref2;\n  return (limits[0] <= (_ref = pos_[0]) && _ref <= limits[1]) && (limits[2] <= (_ref1 = pos_[1]) && _ref1 <= limits[3]) && (limits[4] <= (_ref2 = pos_[2]) && _ref2 <= limits[5]);\n};\n\nfunction isValid(ray, distances, item, min_distance) {\n  var distance, pos, pos_, _i, _len;\n  for (_i = 0, _len = distances.length; _i < _len; _i++) {\n    distance = distances[_i];\n    if (!((0 < distance && distance < min_distance))) {\n      continue;\n    }\n    pos = vec3.create();\n    pos = vec3.add(ray.origin, vec3.scale(ray.dir, distance, pos), pos);\n    pos_ = mat4.multiplyVec3(item.inverse, pos, vec3.create());\n    if (inLimits(item.limits, pos_)) {\n      return [pos, pos_, distance];\n    }\n  }\n  return [null, null, null, null];\n};\n\nfunction intersectItem(item, ray, min_distance) {\n  var ray_ = {\n    dir: vec3.normalize(mat4.multiplyDelta3(item.inverse, ray.dir)),\n    origin: mat4.multiplyVec3(item.inverse, ray.origin, [0, 0, 0])\n  };\n  var obj = objects[item.type];\n\n  var _ref = isValid(ray, obj.solutions(item, ray_), item, min_distance);\n  var pos = _ref[0];\n  var pos_ = _ref[1];\n  var distance = _ref[2];\n  if(!pos) {\n    return;\n  }\n  var color = item.color;\n  var opacity = item.opacity;\n  var reflect = item.reflect;\n  var dir = ray.dir;\n  if(item.tex != null) {\n    var texture = textures[item.tex];\n    var pos2d = obj.pos2d(item, pos_, texture.width, texture.height);\n    var x = Math.floor(pos2d[0]);\n    var y = Math.floor(pos2d[1]);\n    if(item.tex_rep !== 0) {\n      x = mod(x * item.tex_coef, texture.width);\n      y = mod(y * item.tex_coef, texture.height);\n    }\n    var idx = (texture.width * y + x) * 4;\n    opacity *= texture.data[idx + 3] / 255;\n    color = [texture.data[idx] / 255, texture.data[idx + 1] / 255, texture.data[idx + 2] / 255];\n  }\n  if(item.checkerboard != null) {\n    var pos2d = obj.pos2d(item, pos_, 500, 500);\n    if((mod(pos2d[0] / item.checkerboard, 1) > 0.5) === (mod(pos2d[1] / item.checkerboard, 1) > 0.5)) {\n      color = item.color2;\n    }\n  }\n  if(item.pnoise > 0) {\n    var alpha = perlin(pos_, item.pnoise, item.pnoise_pers, item.pnoise_octave, item.pnoise_freq);\n    color = vec3.mix(color, item.color2, alpha);\n  }\n  if(item.type === 'portal') {\n    var dist = item.radius2 - (pos_[0] * pos_[0] + 2 * pos_[1] * pos_[1]);\n    if(dist < 0) {\n      return;\n    }\n    opacity *= 1 - Math.exp(-dist / 2000);\n    opacity = 1 - opacity;\n    pos = mat4.multiplyVec3(item.other.transform, pos_, vec3.create());\n    dir = vec3.normalize(mat4.multiplyDelta3(item.other.transform, vec3.create(ray_.dir)));\n  }\n  var normal = obj.normal(item, ray_, pos_);\n  normal = vec3.normalize(mat4.multiplyDelta3(item.transform, vec3.create(normal)));\n  if(opacity === 0) {\n    return;\n  }\n  return {\n    distance: distance,\n    pos: pos,\n    normal: normal,\n    color: color,\n    item: item,\n    opacity: opacity,\n    reflect: reflect,\n    dir: dir\n  };\n};\n\nfunction intersect(ray, min_distance) {\n  if(min_distance == null) {\n    min_distance = Infinity;\n  }\n  var min_isect = null;\n  for(i = 0; i < self.scene.item.length; i++) {\n    var item = self.scene.item[i];\n    var isect = intersectItem(item, ray, min_distance);\n    if(isect && (!min_isect || isect.distance < min_isect.distance)) {\n      min_isect = isect;\n      min_distance = isect.distance;\n    }\n  }\n  return min_isect;\n};\n\nfunction lightning(isect) {\n  var color;\n  if(self.scene.light != null) {\n    color = [0, 0, 0];\n  } else {\n    color = vec3.create(isect.color);\n  }\n  for(var i = 0; i < self.scene.light.length; i++) {\n    var light = self.scene.light[i];\n    var dir = vec3.sub(light.coords, isect.pos, vec3.create());\n    var min_distance = vec3.length(dir);\n    vec3.normalize(dir);\n    var pos = vec3.create();\n    pos = vec3.add(isect.pos, vec3.scale(dir, epsilon, pos), pos);\n    var ray = {\n      origin: vec3.create(pos),\n      dir: vec3.create(dir)\n    };\n    if(!intersect(ray, min_distance)) {\n      var shade = Math.abs(vec3.dot(isect.normal, ray.dir));\n      var add_color = vec3.create(isect.color);\n      add_color = vec3.plus(add_color, isect.item.brightness);\n      add_color = vec3.mul(add_color, light.color);\n      vec3.scale(add_color, shade);\n      add_color = vec3.scale(add_color, isect.item.intensity);\n      vec3.add(color, add_color);\n    }\n  }\n  var ambiant = vec3.create(isect.color);\n  vec3.mul(ambiant, self.scene.global.l_color);\n  vec3.add(color, ambiant);\n  return color;\n};\n\nfunction launchRay(ray, count) {\n  var color = [0, 0, 0];\n  var isect = intersect(ray);\n  if(isect) {\n    color = lightning(isect);\n    if(count > 0 && isect.opacity < 1) {\n      var ray2 = {\n        origin: vec3.add(isect.pos, vec3.scale(isect.dir, epsilon, vec3.create()), vec3.create()),\n        dir: vec3.normalize(vec3.create(isect.dir))\n      };\n      color = vec3.mix(color, launchRay(ray2, count - 1), 1 - isect.opacity);\n    }\n    if(count > 0 && isect.reflect > 0) {\n      var ray2 = {\n        origin: vec3.add(isect.pos, vec3.scale(isect.normal, epsilon, vec3.create()), vec3.create()),\n        dir: vec3.normalize(vec3.reflect(ray.dir, vec3.normalize(isect.normal), vec3.create()))\n      };\n      color = vec3.mix(color, launchRay(ray2, count - 1), isect.reflect);\n    }\n  }\n  return color;\n};\n\nfunction processPixel(x, y) {\n  var ray = {\n    origin: vec3.create(self.scene.eye.coords),\n    dir: vec3.normalize([self.scene.global.distscreen, x, y])\n  };\n  ray.dir = vec3.normalize(vec3.rotateXYZ.apply(vec3, [ray.dir].concat(__slice.call(self.scene.eye.rot))));\n  return launchRay(ray, self.scene.global.max_reflect);\n};\n\nfunction process(x, y, upscale, randomRays) {\n  var color = [0, 0, 0];\n  vec3.add(color, processPixel((self.scene.global.W / 2 - x) / upscale, (self.scene.global.H / 2 - y) / upscale));\n  for(var i = 0; i < randomRays; i++) {\n    vec3.add(color, processPixel((self.scene.global.W / 2 - x + Math.random() - 0.5) / upscale, (self.scene.global.H / 2 - y + Math.random() - 0.5) / upscale));\n  }\n  return vec3.scale(color, 1 / (1 + randomRays));\n};\n\n/* perlin.js */\n\nvar perlin;\n\n// Generated by CoffeeScript 1.7.1\n(function() {\n  \n  // http://asserttrue.blogspot.com/2011/12/perlin-noise-in-javascript_31.html\n  // This is a port of Ken Perlin's Java code. The\n  // original Java code is at http://cs.nyu.edu/%7Eperlin/noise/.\n  // Note that in this version, a number from 0 to 1 is returned.\n  PerlinNoise = new function() {\n\n    this.noise = function noise(x, y, z) {\n\n       var p = new Array(512)\n       var permutation = [ 151,160,137,91,90,15,\n       131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,\n       190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,\n       88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,\n       77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,\n       102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,\n       135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,\n       5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,\n       223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,\n       129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,\n       251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,\n       49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,\n       138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];\n       for (var i=0; i < 256 ; i++)\n        p[256+i] = p[i] = permutation[i];\n\n        var X = Math.floor(x) & 255,                  // FIND UNIT CUBE THAT\n              Y = Math.floor(y) & 255,                  // CONTAINS POINT.\n              Z = Math.floor(z) & 255;\n          x -= Math.floor(x);                                // FIND RELATIVE X,Y,Z\n          y -= Math.floor(y);                                // OF POINT IN CUBE.\n          z -= Math.floor(z);\n          var    u = fade(x),                                // COMPUTE FADE CURVES\n                 v = fade(y),                                // FOR EACH OF X,Y,Z.\n                 w = fade(z);\n          var A = p[X  ]+Y, AA = p[A]+Z, AB = p[A+1]+Z,      // HASH COORDINATES OF\n              B = p[X+1]+Y, BA = p[B]+Z, BB = p[B+1]+Z;      // THE 8 CUBE CORNERS,\n\n          return scale(lerp(w, lerp(v, lerp(u, grad(p[AA  ], x  , y  , z   ),  // AND ADD\n                                         grad(p[BA  ], x-1, y  , z   )), // BLENDED\n                                 lerp(u, grad(p[AB  ], x  , y-1, z   ),  // RESULTS\n                                         grad(p[BB  ], x-1, y-1, z   ))),// FROM  8\n                         lerp(v, lerp(u, grad(p[AA+1], x  , y  , z-1 ),  // CORNERS\n                                         grad(p[BA+1], x-1, y  , z-1 )), // OF CUBE\n                                 lerp(u, grad(p[AB+1], x  , y-1, z-1 ),\n                                         grad(p[BB+1], x-1, y-1, z-1 )))));\n    }\n    \n    function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }\n    function lerp( t, a, b) { return a + t * (b - a); }\n    function grad(hash, x, y, z) {\n      var h = hash & 15; /* CONVERT LO 4 BITS OF HASH CODE */\n      var u = h<8 ? x : y, /* INTO 12 GRADIENT DIRECTIONS. */\n      v = h<4 ? y : h==12||h==14 ? x : z;\n      return ((h&1) == 0 ? u : -u) + ((h&2) == 0 ? v : -v);\n    }\n    function scale(n) { return n; /*return (1 + n)/2;*/ }\n  };\n  \n  var clamp = function clamp(x, min, max) {\n    if (x < min) {\n      return min;\n    }\n    if (x > max) {\n      return max;\n    }\n    return x;\n  };\n\n  perlin = function perlin(pos, id, persistence, octaves, frequence) {\n    var amplitude, frequency, i, noise, _i;\n    pos = vec3.scale(pos, frequence, vec3.create());\n    noise = 0;\n    frequency = 1;\n    amplitude = 1;\n    for (i = _i = 0; 0 <= octaves ? _i < octaves : _i > octaves; i = 0 <= octaves ? ++_i : --_i) {\n      noise += amplitude * PerlinNoise.noise(pos[0] * frequency, pos[1] * frequency, pos[2] * frequency);\n      frequency *= 2;\n      amplitude *= persistence;\n    }\n    if (id === 2) {\n      noise *= 20;\n      noise = noise - Math.floor(noise);\n    }\n    if (id === 3) {\n      noise = Math.cos(noise);\n    }\n    return (clamp(noise, -1, 1) + 1) / 2;\n  };\n\n}).call(this);\n\n/* worker.js */\n\nscene = null;\nself.textures = {};\n\nfunction render(scene) {\n  self.scene = scene;\n\n  if(scene.global.highdef == null) {\n    scene.global.highdef = [];\n  }\n  if(scene.global.highdef[0] == null) {\n    scene.global.highdef[0] = 1;\n  }\n  if(scene.global.highdef[1] == null) {\n    scene.global.highdef[1] = 0;\n  }\n\n  scene.global.upscale = scene.global.highdef[0];\n  scene.global.randomRays = scene.global.highdef[1];\n\n  if(scene.global.distscreen == null) {\n    scene.global.distscreen = 1000;\n  }\n  if(scene.global.max_reflect == null) {\n    scene.global.max_reflect = 10;\n  }\n  if(scene.global.l_color == null) {\n    scene.global.l_color = [0, 0, 0];\n  }\n\n  scene.global.l_intensity = (scene.global.l_intensity != null ? scene.global.l_intensity : 0) / 100;\n  vec3.scale(scene.global.l_color, scene.global.l_intensity);\n\n  scene.eye.rot = vec3.scale(scene.eye.rot != null ? scene.eye.rot : [0, 0, 0], Math.PI / 180);\n\n  scene.global.W = scene.global.width * scene.global.upscale;\n  scene.global.H = scene.global.height * scene.global.upscale;\n  \n  var groups = {};\n  var portals = {};\n\n  if(scene.light == null) {\n    scene.light = [];\n  }\n  for(var i = 0; i < scene.light.length; i++) {\n    var light = scene.light[i];\n    if(light.coords == null) {\n      light.coords = [0, 0, 0];\n    }\n    if(light.color == null) {\n      light.color = [1, 1, 1];\n    }\n  }\n  /* Items */\n  for(var i = 0; i < scene.item.length; i++) {\n    var item = scene.item[i];\n\n    if(item.color == null) {\n      item.color = [1, 1, 1];\n    }\n    if(item.color2 == null) {\n      item.color2 = item.color.map(function(x) {\n        return 1 - x;\n      });\n    }\n    if(item.coords == null) {\n      item.coords = [0, 0, 0];\n    }\n    item.rot = vec3.scale(item.rot != null ? item.rot : [0, 0, 0], Math.PI / 180);\n    item.brightness = (item.brightness != null ? item.brightness : 0) / 100;\n    item.intensity = (item.intensity != null ? item.intensity : 100) / 100;\n    item.reflect = (item.reflect != null ? item.reflect : 0) / 100;\n    item.opacity = (item.opacity != null ? item.opacity : 100) / 100;\n    if(item.radius == null) {\n      item.radius = 2;\n    }\n    if(item.limits == null) {\n      item.limits = [0, 0, 0, 0, 0, 0];\n    }\n    for(var j = 0; j < 3; j++) {\n      if(item.limits[2 * j] >= item.limits[2 * j + 1]) {\n        item.limits[2 * j] = -Infinity;\n        item.limits[2 * j + 1] = Infinity;\n      }\n    }\n    if(item.pnoise == null) {\n      item.pnoise = 0;\n    }\n    if(item.pnoise_freq == null) {\n      item.pnoise_freq = 1;\n    }\n    if(item.pnoise_pers == null) {\n      item.pnoise_pers = 1;\n    }\n    if(item.pnoise_octave == null) {\n      item.pnoise_octave = 1;\n    }\n    item.transform = mat4.identity();\n    mat4.translate(item.transform, item.coords);\n    mat4.rotateX(item.transform, item.rot[0]);\n    mat4.rotateY(item.transform, item.rot[1]);\n    mat4.rotateZ(item.transform, item.rot[2]);\n    if(item.group_id) {\n      if(groups[item.group_id] == null) {\n        groups[item.group_id] = [];\n      }\n      groups[item.group_id].push(item);\n    }\n    if(item.portal_id != null) {\n      if (!(item.portal_id in portals)) {\n        portals[item.portal_id] = [];\n      }\n      portals[item.portal_id].push(item);\n    }\n  }\n  /* Portals */\n  for(var id in portals) {\n    portals[id][0].other = portals[id][1];\n    portals[id][1].other = portals[id][0];\n  }\n  /* Groups */\n  if(scene.group == null) {\n    scene.group = [];\n  }\n  for(var i = 0; i < scene.group.length; i++) {\n    var group = scene.group[i];\n    if(group.size_mul == null) {\n      group.size_mul = 1;\n    }\n    group.rot = vec3.scale(group.rot != null ? group.rot : [0, 0, 0], Math.PI / 180);\n    if(group.coords == null) {\n      group.coords = [0, 0, 0];\n    }\n    group.transform = mat4.identity();\n    mat4.scale(group.transform, [group.size_mul, group.size_mul, group.size_mul]);\n    mat4.translate(group.transform, group.coords);\n    mat4.rotateX(group.transform, group.rot[0]);\n    mat4.rotateY(group.transform, group.rot[1]);\n    mat4.rotateZ(group.transform, group.rot[2]);\n    if (!(group.id in groups)) {\n      continue;\n    }\n    for(var j = 0; j < groups[group.id].length; j++) {\n      var item_raw = groups[group.id][j];\n      var item = copy(item_raw);\n      delete item.group_id;\n      var t = mat4.create(group.transform);\n      mat4.multiply(t, item.transform);\n      item.transform = t;\n      scene.item.push(item);\n    }\n  }\n  scene.item = scene.item.filter(function(item) {\n    return item.group_id == null;\n  });\n\n  /* Textures */\n  for(var i = 0 ; i < scene.item.length; i++) {\n    var item = scene.item[i];\n    item.coords = mat4.multiplyVec3(item.transform, [0, 0, 0]);\n    item.inverse = mat4.inverse(item.transform, mat4.create());\n    item.radius2 = item.radius * item.radius;\n    if(item.tex != null) {\n      if(item.tex_rep == null) {\n        item.tex_rep = 0;\n      }\n      if(item.tex_coef == null) {\n        item.tex_coef = 1;\n      }\n    }\n  }\n\n  /* Render */\n  var result = []\n  for(var y = scene.job.begin_y; y < scene.job.end_y; y++) {\n    for(var x = scene.job.begin_x; x < scene.job.end_x; x++) {\n      var color = process(y, x, scene.global.upscale, scene.global.randomRays);\n      result.push(~~(color[0] * 255));\n      result.push(~~(color[1] * 255));\n      result.push(~~(color[2] * 255));\n    }\n  }\n  return result;\n}\n\n/* To run on crowdprocess */\nfunction Run(d) {\n  var scene = %%SCENE%%;\n  scene.job = d;\n  return {\n    id: d.id,\n    data: render(scene)\n  };    \n}".replace("%%SCENE%%", JSON.stringify(scene));
     
     /* Setup result */
     var rgb = new Buffer(scene.global.width * scene.global.height * 3);
@@ -191,19 +262,22 @@ function RayTracer(opts) {
     /* Prepare data */
     var data = [];
 
-    /*
-     * TODO: Improve to allow any scene size.
-     * Currently it only allows dimensions divisible by split
-     */
+    /* Calculate jobs sizes */
+    var jobWidth = Math.floor(scene.global.width / split);
+    var splitWidth = Math.ceil(scene.global.width / jobWidth);
+    
+    var jobHeight = Math.floor(scene.global.height / split);
+    var splitHeight = Math.ceil(scene.global.height / jobHeight);
+
     var id = 0;
-    for(var i = 0; i < split; i++) {
-        for(var j = 0; j < split; j++) {
+    for(var i = 0; i < splitWidth; i++) {
+        for(var j = 0; j < splitHeight; j++) {
             data.push({
                 "id": id++,
-                "begin_x": (scene.global.height / split) * j,
-                "end_x": (scene.global.height / split) * (j + 1),
-                "begin_y": (scene.global.width / split) * i,
-                "end_y": (scene.global.width / split) * (i + 1),
+                "begin_x": jobHeight * j,
+                "end_x": j < splitHeight - 1 ? jobHeight * (j + 1) : scene.global.height,
+                "begin_y": jobWidth * i,
+                "end_y": i < splitWidth - 1 ? jobWidth * (i + 1) : scene.global.width
             });
         }
     }
@@ -268,8 +342,7 @@ function RayTracer(opts) {
 
 RayTracer.prototype.__proto__ = events.EventEmitter.prototype;
 
-}).call(this,"/../../node_modules/crp-raytracer")
-},{"./src/parser":37,"CrowdProcess":3,"buffer":40,"events":43,"fs":38}],3:[function(require,module,exports){
+},{"./src/parser":37,"CrowdProcess":3,"buffer":39,"events":42}],3:[function(require,module,exports){
 (function (process,Buffer){
 var Stream = require('stream');
 var JobClient = require('crp-job-client');
@@ -544,16 +617,16 @@ function CrowdProcess(username, password) {
   return DuplexThrough;
 }
 
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"),require("buffer").Buffer)
-},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"buffer":40,"crp-job-client":7,"crp-stream-client":17,"readable-stream":36,"stream":56,"util":65}],4:[function(require,module,exports){
+}).call(this,require("UPikzY"),require("buffer").Buffer)
+},{"UPikzY":49,"buffer":39,"crp-job-client":7,"crp-stream-client":17,"readable-stream":36,"stream":67,"util":71}],4:[function(require,module,exports){
 (function (process){
 exports.server =
   (process.env.NODE_ENV === 'development') ?
     require('./server.development.json') :
     require('./server.json');
 
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
-},{"./server.development.json":5,"./server.json":6,"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50}],5:[function(require,module,exports){
+}).call(this,require("UPikzY"))
+},{"./server.development.json":5,"./server.json":6,"UPikzY":49}],5:[function(require,module,exports){
 module.exports={
   "url": "http://localhost:8002"
 }
@@ -579,10 +652,7 @@ module.exports =
 function Client(options) {
   if (!options)
     options = {};
-  var options = extend(extend({}, defaultOptions), options);
-
-  if (!options.token && (!options.email && !options.password))
-    throw new Error('Need authentication');
+  options = extend(extend({}, defaultOptions), options);
 
   var defaultReqOpts = {
     headers: {
@@ -591,12 +661,12 @@ function Client(options) {
   };
 
   if (options.token)
-    defaultReqOpts.headers["Authorization"] = "token " + options.token;
+    defaultReqOpts.headers.Authorization = "token " + options.token;
     
   if (options.email && options.password)
-    defaultReqOpts.headers["Authorization"] = "Basic "+
+    defaultReqOpts.headers.Authorization = "Basic "+
       (new Buffer(options.email+':'+options.password)
-        .toString('base64'))
+        .toString('base64'));
 
   function jobs (jobId) {
     return {
@@ -656,7 +726,7 @@ function Client(options) {
         cb(null, JSON.parse(body.toString()));
       });
     });
-  };
+  }
 
   jobs.listStream = listStream;
   function listStream () {
@@ -716,7 +786,7 @@ function Show (options, defaultReqOpts, jobId) {
         cb(err, JSON.parse(body.toString()));
       });
     });
-  }
+  };
 }
 
 function Destroy (options, defaultReqOpts, jobId) {
@@ -738,11 +808,11 @@ function Destroy (options, defaultReqOpts, jobId) {
 
       cb(null);
     });
-  }
+  };
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./config":4,"./lib/extend":8,"buffer":40,"hyperquest":9,"stream2buffer":12}],8:[function(require,module,exports){
+},{"./config":4,"./lib/extend":8,"buffer":39,"hyperquest":9,"stream2buffer":12}],8:[function(require,module,exports){
 exports =
 module.exports =
 function extend (origin, add) {
@@ -760,6 +830,517 @@ function extend (origin, add) {
 }
 
 },{}],9:[function(require,module,exports){
+(function (process,Buffer){
+var url = require('url');
+var http = require('http');
+var https = require('https');
+var through = require('through');
+var duplexer = require('duplexer');
+
+module.exports = hyperquest;
+
+function bind (obj, fn) {
+  var args = Array.prototype.slice.call(arguments, 2);
+  return function () {
+    var argv = args.concat(Array.prototype.slice.call(arguments));
+    return fn.apply(obj, argv);
+  }
+}
+
+function hyperquest (uri, opts, cb, extra) {
+    if (typeof uri === 'object') {
+        cb = opts;
+        opts = uri;
+        uri = undefined;
+    }
+    if (typeof opts === 'function') {
+      cb = opts;
+      opts = undefined;
+    }
+    if (!opts) opts = {};
+    if (uri !== undefined) opts.uri = uri;
+    if (extra) opts.method = extra.method;
+    
+    var req = new Req(opts);
+    var ws = req.duplex && through();
+    if (ws) ws.pause();
+    var rs = through();
+    
+    var dup = req.duplex ? duplexer(ws, rs) : rs;
+    if (!req.duplex) {
+        rs.writable = false;
+    }
+    dup.request = req;
+    dup.setHeader = bind(req, req.setHeader);
+    dup.setLocation = bind(req, req.setLocation);
+    
+    var closed = false;
+    dup.on('close', function () { closed = true });
+    
+    process.nextTick(function () {
+        if (closed) return;
+        dup.on('close', function () { r.destroy() });
+        
+        var r = req._send();
+        r.on('error', bind(dup, dup.emit, 'error'));
+        
+        r.on('response', function (res) {
+            dup.response = res;
+            dup.emit('response', res);
+            if (req.duplex) res.pipe(rs)
+            else {
+                res.on('data', function (buf) { rs.queue(buf) });
+                res.on('end', function () { rs.queue(null) });
+            }
+        });
+        
+        if (req.duplex) {
+            ws.pipe(r);
+            ws.resume();
+        }
+        else r.end();
+    });
+    
+    if (cb) {
+        dup.on('error', cb);
+        dup.on('response', bind(dup, cb, null));
+    }
+    return dup;
+}
+
+hyperquest.get = hyperquest;
+
+hyperquest.post = function (uri, opts, cb) {
+    return hyperquest(uri, opts, cb, { method: 'POST' });
+};
+
+hyperquest.put = function (uri, opts, cb) {
+    return hyperquest(uri, opts, cb, { method: 'PUT' });
+};
+
+hyperquest['delete'] = function (uri, opts, cb) {
+    return hyperquest(uri, opts, cb, { method: 'DELETE' });
+};
+
+function Req (opts) {
+    this.headers = opts.headers || {};
+    
+    var method = (opts.method || 'GET').toUpperCase();
+    this.method = method;
+    this.duplex = !(method === 'GET' || method === 'DELETE'
+        || method === 'HEAD');
+    this.auth = opts.auth;
+    
+    this.options = opts;
+    
+    if (opts.uri) this.setLocation(opts.uri);
+}
+
+Req.prototype._send = function () {
+    this._sent = true;
+    
+    var headers = this.headers || {};
+    var u = url.parse(this.uri);
+    var au = u.auth || this.auth;
+    if (au) {
+        headers.authorization = 'Basic ' + Buffer(au).toString('base64');
+    }
+    
+    var protocol = u.protocol || '';
+    var iface = protocol === 'https:' ? https : http;
+    var opts = {
+        scheme: protocol.replace(/:$/, ''),
+        method: this.method,
+        host: u.hostname,
+        port: Number(u.port) || (protocol === 'https:' ? 443 : 80),
+        path: u.path,
+        agent: false,
+        headers: headers,
+        withCredentials: this.options.withCredentials
+    };
+    if (protocol === 'https:') {
+        opts.pfx = this.options.pfx;
+        opts.key = this.options.key;
+        opts.cert = this.options.cert;
+        opts.ca = this.options.ca;
+        opts.ciphers = this.options.ciphers;
+        opts.rejectUnauthorized = this.options.rejectUnauthorized;
+        opts.secureProtocol = this.options.secureProtocol;
+    }
+    var req = iface.request(opts);
+    
+    if (req.setTimeout) req.setTimeout(Math.pow(2, 32) * 1000);
+    return req;
+};
+
+Req.prototype.setHeader = function (key, value) {
+    if (this._sent) throw new Error('request already sent');
+    this.headers[key] = value;
+    return this;
+};
+
+Req.prototype.setLocation = function (uri) {
+    this.uri = uri;
+    return this;
+};
+
+}).call(this,require("UPikzY"),require("buffer").Buffer)
+},{"UPikzY":49,"buffer":39,"duplexer":10,"http":43,"https":47,"through":11,"url":69}],10:[function(require,module,exports){
+var Stream = require("stream")
+var writeMethods = ["write", "end", "destroy"]
+var readMethods = ["resume", "pause"]
+var readEvents = ["data", "close"]
+var slice = Array.prototype.slice
+
+module.exports = duplex
+
+function forEach (arr, fn) {
+    if (arr.forEach) {
+        return arr.forEach(fn)
+    }
+
+    for (var i = 0; i < arr.length; i++) {
+        fn(arr[i], i)
+    }
+}
+
+function duplex(writer, reader) {
+    var stream = new Stream()
+    var ended = false
+
+    forEach(writeMethods, proxyWriter)
+
+    forEach(readMethods, proxyReader)
+
+    forEach(readEvents, proxyStream)
+
+    reader.on("end", handleEnd)
+
+    writer.on("drain", function() {
+      stream.emit("drain")
+    })
+
+    writer.on("error", reemit)
+    reader.on("error", reemit)
+
+    stream.writable = writer.writable
+    stream.readable = reader.readable
+
+    return stream
+
+    function proxyWriter(methodName) {
+        stream[methodName] = method
+
+        function method() {
+            return writer[methodName].apply(writer, arguments)
+        }
+    }
+
+    function proxyReader(methodName) {
+        stream[methodName] = method
+
+        function method() {
+            stream.emit(methodName)
+            var func = reader[methodName]
+            if (func) {
+                return func.apply(reader, arguments)
+            }
+            reader.emit(methodName)
+        }
+    }
+
+    function proxyStream(methodName) {
+        reader.on(methodName, reemit)
+
+        function reemit() {
+            var args = slice.call(arguments)
+            args.unshift(methodName)
+            stream.emit.apply(stream, args)
+        }
+    }
+
+    function handleEnd() {
+        if (ended) {
+            return
+        }
+        ended = true
+        var args = slice.call(arguments)
+        args.unshift("end")
+        stream.emit.apply(stream, args)
+    }
+
+    function reemit(err) {
+        stream.emit("error", err)
+    }
+}
+
+},{"stream":67}],11:[function(require,module,exports){
+(function (process){
+var Stream = require('stream')
+
+// through
+//
+// a stream that does nothing but re-emit the input.
+// useful for aggregating a series of changing but not ending streams into one stream)
+
+
+
+exports = module.exports = through
+through.through = through
+
+//create a readable writable stream.
+
+function through (write, end) {
+  write = write || function (data) { this.queue(data) }
+  end = end || function () { this.queue(null) }
+
+  var ended = false, destroyed = false, buffer = []
+  var stream = new Stream()
+  stream.readable = stream.writable = true
+  stream.paused = false
+
+  stream.write = function (data) {
+    write.call(this, data)
+    return !stream.paused
+  }
+
+  function drain() {
+    while(buffer.length && !stream.paused) {
+      var data = buffer.shift()
+      if(null === data)
+        return stream.emit('end')
+      else
+        stream.emit('data', data)
+    }
+  }
+
+  stream.queue = stream.push = function (data) {
+    buffer.push(data)
+    drain()
+    return stream
+  }
+
+  //this will be registered as the first 'end' listener
+  //must call destroy next tick, to make sure we're after any
+  //stream piped from here.
+  //this is only a problem if end is not emitted synchronously.
+  //a nicer way to do this is to make sure this is the last listener for 'end'
+
+  stream.on('end', function () {
+    stream.readable = false
+    if(!stream.writable)
+      process.nextTick(function () {
+        stream.destroy()
+      })
+  })
+
+  function _end () {
+    stream.writable = false
+    end.call(stream)
+    if(!stream.readable)
+      stream.destroy()
+  }
+
+  stream.end = function (data) {
+    if(ended) return
+    ended = true
+    if(arguments.length) stream.write(data)
+    _end() // will emit or queue
+    return stream
+  }
+
+  stream.destroy = function () {
+    if(destroyed) return
+    destroyed = true
+    ended = true
+    buffer.length = 0
+    stream.writable = stream.readable = false
+    stream.emit('close')
+    return stream
+  }
+
+  stream.pause = function () {
+    if(stream.paused) return
+    stream.paused = true
+    stream.emit('pause')
+    return stream
+  }
+  stream.resume = function () {
+    if(stream.paused) {
+      stream.paused = false
+    }
+    drain()
+    //may have become paused again,
+    //as drain emits 'data'.
+    if(!stream.paused)
+      stream.emit('drain')
+    return stream
+  }
+  return stream
+}
+
+
+}).call(this,require("UPikzY"))
+},{"UPikzY":49,"stream":67}],12:[function(require,module,exports){
+(function (Buffer){
+module.exports = function streamToBuffer(stream, callback) {
+  var done = false;
+  var buffers = [];
+
+  stream.on('data', function (data) {
+    buffers.push(data);
+  });
+
+  stream.on('end', function () {
+    if (done)
+      return;
+
+    done = true;
+
+    var buff;
+
+    try {
+      buff = Buffer.concat(buffers);
+    } catch (err) {
+      if (stream._readableState) {
+        if (stream._readableState.encoding === 'utf8' ||
+            stream._readableState.encoding === 'ascii')
+          buff = buffers.join('');
+
+        if (stream._readableState.objectMode)
+          buff = buffers;
+      } else
+        buff = buffers.join('');
+    }
+
+    callback(null, buff);
+    buffers.length = 0;
+  });
+
+  stream.on('error', function (err) {
+    done = true;
+    buffers = null;
+    callback(err);
+  });
+};
+
+}).call(this,require("buffer").Buffer)
+},{"buffer":39}],13:[function(require,module,exports){
+arguments[4][4][0].apply(exports,arguments)
+},{"./server.development.json":14,"./server.json":15,"UPikzY":49}],14:[function(require,module,exports){
+module.exports={
+  "url": "http://localhost:8003/"
+}
+
+},{}],15:[function(require,module,exports){
+module.exports={
+  "url": "https://api.crowdprocess.com:443/"
+}
+
+},{}],16:[function(require,module,exports){
+var Transform = require('stream').Transform;
+if (!Transform)
+  Transform = require('readable-stream').Transform; // for browsers and node pre-0.10
+var extend = require('./lib/extend');
+var request = require('hyperquest');
+var querystring = require('querystring');
+var nlJSON = require('newline-json');
+
+module.exports = ErrorsStream;
+function ErrorsStream(jobId, defaultReqOpts, options) {
+  return function errorStream (reqOpts) {
+    if (!reqOpts)
+      reqOpts = {};
+
+    var url = options.baseUrl +
+              encodeURIComponent(jobId) +
+              '/errors?' +
+              querystring.stringify(reqOpts);
+
+    var opts = extend({
+      uri: url
+    }, defaultReqOpts);
+
+    var req = request(opts);
+    req.on('response', checkStatus);
+    function checkStatus() {
+      var status = req.response.statusCode;
+      // 0 means client canceled on the browser
+      if (status !== 200 && status !== 0) {
+        var err = new Error('Unexpected status code: ' + status);
+        err.status = status;
+        throw err;
+      }
+    }
+
+    var parser = new nlJSON.Parser();
+    req.pipe(parser);
+
+    parser.on('end', function() {
+      req.end();
+    });
+
+    return parser;
+  };
+}
+
+},{"./lib/extend":18,"hyperquest":19,"newline-json":22,"querystring":53,"readable-stream":36,"stream":67}],17:[function(require,module,exports){
+(function (Buffer){
+var config = require('./config');
+var TaskStream = require('./tasks-stream');
+var ResultsStream = require('./results-stream');
+var ErrorsStream = require('./errors-stream');
+
+module.exports = Client;
+
+function Client(options) {
+  if (!options.token && (!options.email && !options.password))
+    throw new Error('Need authentication');
+
+  var defaultReqOpts = {
+    headers: {
+      "Content-Type": "application/json"
+    }
+  };
+
+  if (options.token)
+    defaultReqOpts.headers.Authorization = "token " + options.token;
+
+  if (options.email && options.password)
+    defaultReqOpts.headers.Authorization = "Basic "+
+      (new Buffer(options.email+':'+options.password)
+        .toString('base64'));
+
+  options.baseUrl = config.server.url + 'jobs/';
+
+  return function streams (jobId) {
+    return {
+      Tasks: TaskStream(jobId, defaultReqOpts, options),
+      Results: ResultsStream(jobId, defaultReqOpts, options),
+      Errors: ErrorsStream(jobId, defaultReqOpts, options),
+    };
+  };
+}
+
+}).call(this,require("buffer").Buffer)
+},{"./config":13,"./errors-stream":16,"./results-stream":25,"./tasks-stream":26,"buffer":39}],18:[function(require,module,exports){
+// because there's no require('util')._extend after browserify
+
+function extend (origin, add) {
+  // Don\'t do anything if add isn\'t an object
+  if (!add || typeof add !== 'object')
+    return origin;
+
+  var keys = Object.keys(add);
+  var i = keys.length;
+  while (i--) {
+    origin[keys[i]] = add[keys[i]];
+  }
+  return origin;
+}
+
+module.exports = extend;
+},{}],19:[function(require,module,exports){
 (function (process,Buffer){
 var url = require('url');
 var http = require('http');
@@ -901,369 +1482,12 @@ Req.prototype.setLocation = function (uri) {
     return this;
 };
 
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"),require("buffer").Buffer)
-},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"buffer":40,"duplexer":10,"http":44,"https":48,"through":11,"url":63}],10:[function(require,module,exports){
-var Stream = require("stream")
-var writeMethods = ["write", "end", "destroy"]
-var readMethods = ["resume", "pause"]
-var readEvents = ["data", "close"]
-var slice = Array.prototype.slice
-
-module.exports = duplex
-
-function forEach (arr, fn) {
-    if (arr.forEach) {
-        return arr.forEach(fn)
-    }
-
-    for (var i = 0; i < arr.length; i++) {
-        fn(arr[i], i)
-    }
-}
-
-function duplex(writer, reader) {
-    var stream = new Stream()
-    var ended = false
-
-    forEach(writeMethods, proxyWriter)
-
-    forEach(readMethods, proxyReader)
-
-    forEach(readEvents, proxyStream)
-
-    reader.on("end", handleEnd)
-
-    writer.on("drain", function() {
-      stream.emit("drain")
-    })
-
-    writer.on("error", reemit)
-    reader.on("error", reemit)
-
-    stream.writable = writer.writable
-    stream.readable = reader.readable
-
-    return stream
-
-    function proxyWriter(methodName) {
-        stream[methodName] = method
-
-        function method() {
-            return writer[methodName].apply(writer, arguments)
-        }
-    }
-
-    function proxyReader(methodName) {
-        stream[methodName] = method
-
-        function method() {
-            stream.emit(methodName)
-            var func = reader[methodName]
-            if (func) {
-                return func.apply(reader, arguments)
-            }
-            reader.emit(methodName)
-        }
-    }
-
-    function proxyStream(methodName) {
-        reader.on(methodName, reemit)
-
-        function reemit() {
-            var args = slice.call(arguments)
-            args.unshift(methodName)
-            stream.emit.apply(stream, args)
-        }
-    }
-
-    function handleEnd() {
-        if (ended) {
-            return
-        }
-        ended = true
-        var args = slice.call(arguments)
-        args.unshift("end")
-        stream.emit.apply(stream, args)
-    }
-
-    function reemit(err) {
-        stream.emit("error", err)
-    }
-}
-
-},{"stream":56}],11:[function(require,module,exports){
-(function (process){
-var Stream = require('stream')
-
-// through
-//
-// a stream that does nothing but re-emit the input.
-// useful for aggregating a series of changing but not ending streams into one stream)
-
-
-
-exports = module.exports = through
-through.through = through
-
-//create a readable writable stream.
-
-function through (write, end) {
-  write = write || function (data) { this.queue(data) }
-  end = end || function () { this.queue(null) }
-
-  var ended = false, destroyed = false, buffer = []
-  var stream = new Stream()
-  stream.readable = stream.writable = true
-  stream.paused = false
-
-  stream.write = function (data) {
-    write.call(this, data)
-    return !stream.paused
-  }
-
-  function drain() {
-    while(buffer.length && !stream.paused) {
-      var data = buffer.shift()
-      if(null === data)
-        return stream.emit('end')
-      else
-        stream.emit('data', data)
-    }
-  }
-
-  stream.queue = stream.push = function (data) {
-    buffer.push(data)
-    drain()
-    return stream
-  }
-
-  //this will be registered as the first 'end' listener
-  //must call destroy next tick, to make sure we're after any
-  //stream piped from here.
-  //this is only a problem if end is not emitted synchronously.
-  //a nicer way to do this is to make sure this is the last listener for 'end'
-
-  stream.on('end', function () {
-    stream.readable = false
-    if(!stream.writable)
-      process.nextTick(function () {
-        stream.destroy()
-      })
-  })
-
-  function _end () {
-    stream.writable = false
-    end.call(stream)
-    if(!stream.readable)
-      stream.destroy()
-  }
-
-  stream.end = function (data) {
-    if(ended) return
-    ended = true
-    if(arguments.length) stream.write(data)
-    _end() // will emit or queue
-    return stream
-  }
-
-  stream.destroy = function () {
-    if(destroyed) return
-    destroyed = true
-    ended = true
-    buffer.length = 0
-    stream.writable = stream.readable = false
-    stream.emit('close')
-    return stream
-  }
-
-  stream.pause = function () {
-    if(stream.paused) return
-    stream.paused = true
-    stream.emit('pause')
-    return stream
-  }
-  stream.resume = function () {
-    if(stream.paused) {
-      stream.paused = false
-    }
-    drain()
-    //may have become paused again,
-    //as drain emits 'data'.
-    if(!stream.paused)
-      stream.emit('drain')
-    return stream
-  }
-  return stream
-}
-
-
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
-},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"stream":56}],12:[function(require,module,exports){
-(function (Buffer){
-module.exports = function streamToBuffer(stream, callback) {
-  var done = false;
-  var buffers = [];
-
-  stream.on('data', function (data) {
-    buffers.push(data);
-  });
-
-  stream.on('end', function () {
-    if (done)
-      return;
-
-    done = true;
-
-    var buff;
-    
-    try {
-      buff = Buffer.concat(buffers);
-    } catch (err) {
-      if (stream._readableState) {
-        if (stream._readableState.encoding === 'utf8' ||
-            stream._readableState.encoding === 'ascii')
-          buff = buffers.join('');
-
-        if (stream._readableState.objectMode)
-          buff = buffers;
-      } else
-        buff = buffers.join('');
-    }
-    
-    callback(null, buff);
-    buffers.length = 0;
-  });
-
-  stream.on('error', function (err) {
-    done = true;
-    buffers = null;
-    callback(err);
-  });
-}
-
-}).call(this,require("buffer").Buffer)
-},{"buffer":40}],13:[function(require,module,exports){
-arguments[4][4][0].apply(exports,arguments)
-},{"./server.development.json":14,"./server.json":15,"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50}],14:[function(require,module,exports){
-module.exports={
-  "url": "http://localhost:8003/"
-}
-
-},{}],15:[function(require,module,exports){
-module.exports={
-  "url": "https://api.crowdprocess.com:443/"
-}
-
-},{}],16:[function(require,module,exports){
-var Transform = require('stream').Transform;
-if (!Transform)
-  Transform = require('readable-stream').Transform; // for browsers and node pre-0.10
-var extend = require('./lib/extend');
-var request = require('hyperquest');
-var querystring = require('querystring');
-var nlJSON = require('newline-json');
-
-module.exports = ErrorsStream;
-function ErrorsStream(jobId, defaultReqOpts, options) {
-  return function errorStream (reqOpts) {
-    if (!reqOpts)
-      reqOpts = {};
-
-    var url = options.baseUrl +
-              encodeURIComponent(jobId) +
-              '/errors?' +
-              querystring.stringify(reqOpts);
-
-    var opts = extend({
-      uri: url
-    }, defaultReqOpts);
-
-    var req = request(opts);
-    req.on('response', checkStatus);
-    function checkStatus() {
-      var status = req.response.statusCode;
-      // 0 means client canceled on the browser
-      if (status !== 200 && status !== 0) {
-        var err = new Error('Unexpected status code: ' + status);
-        err.status = status;
-        throw err;
-      }
-    }
-
-    var parser = new nlJSON.Parser();
-    req.pipe(parser);
-
-    parser.on('end', function() {
-      req.end();
-    });
-
-    return parser;
-  };
-}
-
-},{"./lib/extend":18,"hyperquest":19,"newline-json":22,"querystring":54,"readable-stream":36,"stream":56}],17:[function(require,module,exports){
-(function (Buffer){
-var config = require('./config');
-var TaskStream = require('./tasks-stream');
-var ResultsStream = require('./results-stream');
-var ErrorsStream = require('./errors-stream');
-
-module.exports = Client;
-
-function Client(options) {
-  if (!options.token && (!options.email && !options.password))
-    throw new Error('Need authentication');
-
-  var defaultReqOpts = {
-    headers: {
-      "Content-Type": "application/json"
-    }
-  };
-
-  if (options.token)
-    defaultReqOpts.headers.Authorization = "token " + options.token;
-
-  if (options.email && options.password)
-    defaultReqOpts.headers.Authorization = "Basic "+
-      (new Buffer(options.email+':'+options.password)
-        .toString('base64'));
-
-  options.baseUrl = config.server.url + 'jobs/';
-
-  return function streams (jobId) {
-    return {
-      Tasks: TaskStream(jobId, defaultReqOpts, options),
-      Results: ResultsStream(jobId, defaultReqOpts, options),
-      Errors: ErrorsStream(jobId, defaultReqOpts, options),
-    };
-  };
-}
-
-}).call(this,require("buffer").Buffer)
-},{"./config":13,"./errors-stream":16,"./results-stream":25,"./tasks-stream":26,"buffer":40}],18:[function(require,module,exports){
-// because there's no require('util')._extend after browserify
-
-function extend (origin, add) {
-  // Don\'t do anything if add isn\'t an object
-  if (!add || typeof add !== 'object')
-    return origin;
-
-  var keys = Object.keys(add);
-  var i = keys.length;
-  while (i--) {
-    origin[keys[i]] = add[keys[i]];
-  }
-  return origin;
-}
-
-module.exports = extend;
-},{}],19:[function(require,module,exports){
-module.exports=require(9)
-},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"buffer":40,"duplexer":20,"http":44,"https":48,"through":21,"url":63}],20:[function(require,module,exports){
+}).call(this,require("UPikzY"),require("buffer").Buffer)
+},{"UPikzY":49,"buffer":39,"duplexer":20,"http":43,"https":47,"through":21,"url":69}],20:[function(require,module,exports){
 module.exports=require(10)
-},{"stream":56}],21:[function(require,module,exports){
+},{"stream":67}],21:[function(require,module,exports){
 module.exports=require(11)
-},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"stream":56}],22:[function(require,module,exports){
+},{"UPikzY":49,"stream":67}],22:[function(require,module,exports){
 exports.Stringifier = require('./stringifier');
 exports.Parser = require('./parser');
 
@@ -1323,7 +1547,7 @@ Parser.prototype._flush = function(cb) {
 
 module.exports = Parser;
 
-},{"readable-stream":36,"stream":56,"string_decoder":62,"util":65}],24:[function(require,module,exports){
+},{"readable-stream":36,"stream":67,"string_decoder":68,"util":71}],24:[function(require,module,exports){
 var util = require('util');
 var Transform = require('stream').Transform;
 if (!Transform)
@@ -1350,7 +1574,7 @@ Stringifier.prototype._transform = function(chunk, encoding, done) {
 
 module.exports = Stringifier;
 
-},{"readable-stream":36,"stream":56,"util":65}],25:[function(require,module,exports){
+},{"readable-stream":36,"stream":67,"util":71}],25:[function(require,module,exports){
 var Transform = require('stream').Transform;
 if (!Transform)
   Transform = require('readable-stream').Transform; // for browsers and node pre-0.10
@@ -1397,7 +1621,7 @@ function ResultStream(jobId, defaultReqOpts, options) {
   };
 }
 
-},{"./lib/extend":18,"hyperquest":19,"newline-json":22,"querystring":54,"readable-stream":36,"stream":56}],26:[function(require,module,exports){
+},{"./lib/extend":18,"hyperquest":19,"newline-json":22,"querystring":53,"readable-stream":36,"stream":67}],26:[function(require,module,exports){
 var Transform = require('stream').Transform;
 if (!Transform)
   Transform = require('readable-stream').Transform; // for browsers and node pre-0.10
@@ -1432,7 +1656,7 @@ function TaskStream (jobId, defaultReqOpts, options) {
   };
 }
 
-},{"./lib/extend":18,"hyperquest":19,"newline-json":22,"querystring":54,"readable-stream":36,"stream":56}],27:[function(require,module,exports){
+},{"./lib/extend":18,"hyperquest":19,"newline-json":22,"querystring":53,"readable-stream":36,"stream":67}],27:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -1524,8 +1748,8 @@ function forEach (xs, f) {
   }
 }
 
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
-},{"./_stream_readable":29,"./_stream_writable":31,"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"core-util-is":32,"inherits":33}],28:[function(require,module,exports){
+}).call(this,require("UPikzY"))
+},{"./_stream_readable":29,"./_stream_writable":31,"UPikzY":49,"core-util-is":32,"inherits":33}],28:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2520,8 +2744,8 @@ function indexOf (xs, x) {
   return -1;
 }
 
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
-},{"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"buffer":40,"core-util-is":32,"events":43,"inherits":33,"isarray":34,"stream":56,"string_decoder/":35,"util":39}],30:[function(require,module,exports){
+}).call(this,require("UPikzY"))
+},{"UPikzY":49,"buffer":39,"core-util-is":32,"events":42,"inherits":33,"isarray":34,"stream":67,"string_decoder/":35,"util":38}],30:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3207,8 +3431,8 @@ function endWritable(stream, state, cb) {
   state.ended = true;
 }
 
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
-},{"./_stream_duplex":27,"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"buffer":40,"core-util-is":32,"inherits":33,"stream":56}],32:[function(require,module,exports){
+}).call(this,require("UPikzY"))
+},{"./_stream_duplex":27,"UPikzY":49,"buffer":39,"core-util-is":32,"inherits":33,"stream":67}],32:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -3318,7 +3542,7 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 }).call(this,require("buffer").Buffer)
-},{"buffer":40}],33:[function(require,module,exports){
+},{"buffer":39}],33:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -3550,7 +3774,7 @@ function base64DetectIncompleteChar(buffer) {
   return incomplete;
 }
 
-},{"buffer":40}],36:[function(require,module,exports){
+},{"buffer":39}],36:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = require('stream');
 exports.Readable = exports;
@@ -3559,7 +3783,7 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":27,"./lib/_stream_passthrough.js":28,"./lib/_stream_readable.js":29,"./lib/_stream_transform.js":30,"./lib/_stream_writable.js":31,"stream":56}],37:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":27,"./lib/_stream_passthrough.js":28,"./lib/_stream_readable.js":29,"./lib/_stream_transform.js":30,"./lib/_stream_writable.js":31,"stream":67}],37:[function(require,module,exports){
 // Generated by CoffeeScript 1.7.1
 
 var __slice = [].slice;
@@ -3672,15 +3896,11 @@ module.exports.Parser = Parser;
 },{}],38:[function(require,module,exports){
 
 },{}],39:[function(require,module,exports){
-module.exports=require(38)
-},{}],40:[function(require,module,exports){
-/**
+/*!
  * The buffer module from node.js, for the browser.
  *
- * Author:   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
- * License:  MIT
- *
- * `npm install buffer`
+ * @author   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * @license  MIT
  */
 
 var base64 = require('base64-js')
@@ -3772,7 +3992,7 @@ function Buffer (subject, encoding, noZero) {
       if (Buffer.isBuffer(subject))
         buf[i] = subject.readUInt8(i)
       else
-        buf[i] = subject[i]
+        buf.writeInt8(subject[i], i)
     }
   } else if (type === 'string') {
     buf.write(subject, 0, encoding)
@@ -3813,7 +4033,7 @@ Buffer.isBuffer = function (b) {
 
 Buffer.byteLength = function (str, encoding) {
   var ret
-  str = str + ''
+  str = str.toString()
   switch (encoding || 'utf8') {
     case 'hex':
       ret = str.length / 2
@@ -3843,8 +4063,7 @@ Buffer.byteLength = function (str, encoding) {
 }
 
 Buffer.concat = function (list, totalLength) {
-  assert(isArray(list), 'Usage: Buffer.concat(list, [totalLength])\n' +
-      'list should be an Array.')
+  assert(isArray(list), 'Usage: Buffer.concat(list[, length])')
 
   if (list.length === 0) {
     return new Buffer(0)
@@ -3853,7 +4072,7 @@ Buffer.concat = function (list, totalLength) {
   }
 
   var i
-  if (typeof totalLength !== 'number') {
+  if (totalLength === undefined) {
     totalLength = 0
     for (i = 0; i < list.length; i++) {
       totalLength += list[i].length
@@ -3870,10 +4089,28 @@ Buffer.concat = function (list, totalLength) {
   return buf
 }
 
+Buffer.compare = function (a, b) {
+  assert(Buffer.isBuffer(a) && Buffer.isBuffer(b), 'Arguments must be Buffers')
+  var x = a.length
+  var y = b.length
+  for (var i = 0, len = Math.min(x, y); i < len && a[i] === b[i]; i++) {}
+  if (i !== len) {
+    x = a[i]
+    y = b[i]
+  }
+  if (x < y) {
+    return -1
+  }
+  if (y < x) {
+    return 1
+  }
+  return 0
+}
+
 // BUFFER INSTANCE METHODS
 // =======================
 
-function _hexWrite (buf, string, offset, length) {
+function hexWrite (buf, string, offset, length) {
   offset = Number(offset) || 0
   var remaining = buf.length - offset
   if (!length) {
@@ -3897,35 +4134,30 @@ function _hexWrite (buf, string, offset, length) {
     assert(!isNaN(byte), 'Invalid hex string')
     buf[offset + i] = byte
   }
-  Buffer._charsWritten = i * 2
   return i
 }
 
-function _utf8Write (buf, string, offset, length) {
-  var charsWritten = Buffer._charsWritten =
-    blitBuffer(utf8ToBytes(string), buf, offset, length)
+function utf8Write (buf, string, offset, length) {
+  var charsWritten = blitBuffer(utf8ToBytes(string), buf, offset, length)
   return charsWritten
 }
 
-function _asciiWrite (buf, string, offset, length) {
-  var charsWritten = Buffer._charsWritten =
-    blitBuffer(asciiToBytes(string), buf, offset, length)
+function asciiWrite (buf, string, offset, length) {
+  var charsWritten = blitBuffer(asciiToBytes(string), buf, offset, length)
   return charsWritten
 }
 
-function _binaryWrite (buf, string, offset, length) {
-  return _asciiWrite(buf, string, offset, length)
+function binaryWrite (buf, string, offset, length) {
+  return asciiWrite(buf, string, offset, length)
 }
 
-function _base64Write (buf, string, offset, length) {
-  var charsWritten = Buffer._charsWritten =
-    blitBuffer(base64ToBytes(string), buf, offset, length)
+function base64Write (buf, string, offset, length) {
+  var charsWritten = blitBuffer(base64ToBytes(string), buf, offset, length)
   return charsWritten
 }
 
-function _utf16leWrite (buf, string, offset, length) {
-  var charsWritten = Buffer._charsWritten =
-    blitBuffer(utf16leToBytes(string), buf, offset, length)
+function utf16leWrite (buf, string, offset, length) {
+  var charsWritten = blitBuffer(utf16leToBytes(string), buf, offset, length)
   return charsWritten
 }
 
@@ -3959,26 +4191,26 @@ Buffer.prototype.write = function (string, offset, length, encoding) {
   var ret
   switch (encoding) {
     case 'hex':
-      ret = _hexWrite(this, string, offset, length)
+      ret = hexWrite(this, string, offset, length)
       break
     case 'utf8':
     case 'utf-8':
-      ret = _utf8Write(this, string, offset, length)
+      ret = utf8Write(this, string, offset, length)
       break
     case 'ascii':
-      ret = _asciiWrite(this, string, offset, length)
+      ret = asciiWrite(this, string, offset, length)
       break
     case 'binary':
-      ret = _binaryWrite(this, string, offset, length)
+      ret = binaryWrite(this, string, offset, length)
       break
     case 'base64':
-      ret = _base64Write(this, string, offset, length)
+      ret = base64Write(this, string, offset, length)
       break
     case 'ucs2':
     case 'ucs-2':
     case 'utf16le':
     case 'utf-16le':
-      ret = _utf16leWrite(this, string, offset, length)
+      ret = utf16leWrite(this, string, offset, length)
       break
     default:
       throw new Error('Unknown encoding')
@@ -3991,9 +4223,7 @@ Buffer.prototype.toString = function (encoding, start, end) {
 
   encoding = String(encoding || 'utf8').toLowerCase()
   start = Number(start) || 0
-  end = (end !== undefined)
-    ? Number(end)
-    : end = self.length
+  end = (end === undefined) ? self.length : Number(end)
 
   // Fastpath empty strings
   if (end === start)
@@ -4002,26 +4232,26 @@ Buffer.prototype.toString = function (encoding, start, end) {
   var ret
   switch (encoding) {
     case 'hex':
-      ret = _hexSlice(self, start, end)
+      ret = hexSlice(self, start, end)
       break
     case 'utf8':
     case 'utf-8':
-      ret = _utf8Slice(self, start, end)
+      ret = utf8Slice(self, start, end)
       break
     case 'ascii':
-      ret = _asciiSlice(self, start, end)
+      ret = asciiSlice(self, start, end)
       break
     case 'binary':
-      ret = _binarySlice(self, start, end)
+      ret = binarySlice(self, start, end)
       break
     case 'base64':
-      ret = _base64Slice(self, start, end)
+      ret = base64Slice(self, start, end)
       break
     case 'ucs2':
     case 'ucs-2':
     case 'utf16le':
     case 'utf-16le':
-      ret = _utf16leSlice(self, start, end)
+      ret = utf16leSlice(self, start, end)
       break
     default:
       throw new Error('Unknown encoding')
@@ -4034,6 +4264,16 @@ Buffer.prototype.toJSON = function () {
     type: 'Buffer',
     data: Array.prototype.slice.call(this._arr || this, 0)
   }
+}
+
+Buffer.prototype.equals = function (b) {
+  assert(Buffer.isBuffer(b), 'Argument must be a Buffer')
+  return Buffer.compare(this, b) === 0
+}
+
+Buffer.prototype.compare = function (b) {
+  assert(Buffer.isBuffer(b), 'Argument must be a Buffer')
+  return Buffer.compare(this, b)
 }
 
 // copy(targetBuffer, targetStart=0, sourceStart=0, sourceEnd=buffer.length)
@@ -4064,14 +4304,15 @@ Buffer.prototype.copy = function (target, target_start, start, end) {
   var len = end - start
 
   if (len < 100 || !Buffer._useTypedArrays) {
-    for (var i = 0; i < len; i++)
+    for (var i = 0; i < len; i++) {
       target[i + target_start] = this[i + start]
+    }
   } else {
     target._set(this.subarray(start, start + len), target_start)
   }
 }
 
-function _base64Slice (buf, start, end) {
+function base64Slice (buf, start, end) {
   if (start === 0 && end === buf.length) {
     return base64.fromByteArray(buf)
   } else {
@@ -4079,7 +4320,7 @@ function _base64Slice (buf, start, end) {
   }
 }
 
-function _utf8Slice (buf, start, end) {
+function utf8Slice (buf, start, end) {
   var res = ''
   var tmp = ''
   end = Math.min(buf.length, end)
@@ -4096,20 +4337,21 @@ function _utf8Slice (buf, start, end) {
   return res + decodeUtf8Char(tmp)
 }
 
-function _asciiSlice (buf, start, end) {
+function asciiSlice (buf, start, end) {
   var ret = ''
   end = Math.min(buf.length, end)
 
-  for (var i = start; i < end; i++)
+  for (var i = start; i < end; i++) {
     ret += String.fromCharCode(buf[i])
+  }
   return ret
 }
 
-function _binarySlice (buf, start, end) {
-  return _asciiSlice(buf, start, end)
+function binarySlice (buf, start, end) {
+  return asciiSlice(buf, start, end)
 }
 
-function _hexSlice (buf, start, end) {
+function hexSlice (buf, start, end) {
   var len = buf.length
 
   if (!start || start < 0) start = 0
@@ -4122,11 +4364,11 @@ function _hexSlice (buf, start, end) {
   return out
 }
 
-function _utf16leSlice (buf, start, end) {
+function utf16leSlice (buf, start, end) {
   var bytes = buf.slice(start, end)
   var res = ''
   for (var i = 0; i < bytes.length; i += 2) {
-    res += String.fromCharCode(bytes[i] + bytes[i+1] * 256)
+    res += String.fromCharCode(bytes[i] + bytes[i + 1] * 256)
   }
   return res
 }
@@ -4172,7 +4414,7 @@ Buffer.prototype.readUInt8 = function (offset, noAssert) {
   return this[offset]
 }
 
-function _readUInt16 (buf, offset, littleEndian, noAssert) {
+function readUInt16 (buf, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
     assert(offset !== undefined && offset !== null, 'missing offset')
@@ -4197,14 +4439,14 @@ function _readUInt16 (buf, offset, littleEndian, noAssert) {
 }
 
 Buffer.prototype.readUInt16LE = function (offset, noAssert) {
-  return _readUInt16(this, offset, true, noAssert)
+  return readUInt16(this, offset, true, noAssert)
 }
 
 Buffer.prototype.readUInt16BE = function (offset, noAssert) {
-  return _readUInt16(this, offset, false, noAssert)
+  return readUInt16(this, offset, false, noAssert)
 }
 
-function _readUInt32 (buf, offset, littleEndian, noAssert) {
+function readUInt32 (buf, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
     assert(offset !== undefined && offset !== null, 'missing offset')
@@ -4237,11 +4479,11 @@ function _readUInt32 (buf, offset, littleEndian, noAssert) {
 }
 
 Buffer.prototype.readUInt32LE = function (offset, noAssert) {
-  return _readUInt32(this, offset, true, noAssert)
+  return readUInt32(this, offset, true, noAssert)
 }
 
 Buffer.prototype.readUInt32BE = function (offset, noAssert) {
-  return _readUInt32(this, offset, false, noAssert)
+  return readUInt32(this, offset, false, noAssert)
 }
 
 Buffer.prototype.readInt8 = function (offset, noAssert) {
@@ -4261,7 +4503,7 @@ Buffer.prototype.readInt8 = function (offset, noAssert) {
     return this[offset]
 }
 
-function _readInt16 (buf, offset, littleEndian, noAssert) {
+function readInt16 (buf, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
     assert(offset !== undefined && offset !== null, 'missing offset')
@@ -4272,7 +4514,7 @@ function _readInt16 (buf, offset, littleEndian, noAssert) {
   if (offset >= len)
     return
 
-  var val = _readUInt16(buf, offset, littleEndian, true)
+  var val = readUInt16(buf, offset, littleEndian, true)
   var neg = val & 0x8000
   if (neg)
     return (0xffff - val + 1) * -1
@@ -4281,14 +4523,14 @@ function _readInt16 (buf, offset, littleEndian, noAssert) {
 }
 
 Buffer.prototype.readInt16LE = function (offset, noAssert) {
-  return _readInt16(this, offset, true, noAssert)
+  return readInt16(this, offset, true, noAssert)
 }
 
 Buffer.prototype.readInt16BE = function (offset, noAssert) {
-  return _readInt16(this, offset, false, noAssert)
+  return readInt16(this, offset, false, noAssert)
 }
 
-function _readInt32 (buf, offset, littleEndian, noAssert) {
+function readInt32 (buf, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
     assert(offset !== undefined && offset !== null, 'missing offset')
@@ -4299,7 +4541,7 @@ function _readInt32 (buf, offset, littleEndian, noAssert) {
   if (offset >= len)
     return
 
-  var val = _readUInt32(buf, offset, littleEndian, true)
+  var val = readUInt32(buf, offset, littleEndian, true)
   var neg = val & 0x80000000
   if (neg)
     return (0xffffffff - val + 1) * -1
@@ -4308,14 +4550,14 @@ function _readInt32 (buf, offset, littleEndian, noAssert) {
 }
 
 Buffer.prototype.readInt32LE = function (offset, noAssert) {
-  return _readInt32(this, offset, true, noAssert)
+  return readInt32(this, offset, true, noAssert)
 }
 
 Buffer.prototype.readInt32BE = function (offset, noAssert) {
-  return _readInt32(this, offset, false, noAssert)
+  return readInt32(this, offset, false, noAssert)
 }
 
-function _readFloat (buf, offset, littleEndian, noAssert) {
+function readFloat (buf, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
     assert(offset + 3 < buf.length, 'Trying to read beyond buffer length')
@@ -4325,14 +4567,14 @@ function _readFloat (buf, offset, littleEndian, noAssert) {
 }
 
 Buffer.prototype.readFloatLE = function (offset, noAssert) {
-  return _readFloat(this, offset, true, noAssert)
+  return readFloat(this, offset, true, noAssert)
 }
 
 Buffer.prototype.readFloatBE = function (offset, noAssert) {
-  return _readFloat(this, offset, false, noAssert)
+  return readFloat(this, offset, false, noAssert)
 }
 
-function _readDouble (buf, offset, littleEndian, noAssert) {
+function readDouble (buf, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
     assert(offset + 7 < buf.length, 'Trying to read beyond buffer length')
@@ -4342,11 +4584,11 @@ function _readDouble (buf, offset, littleEndian, noAssert) {
 }
 
 Buffer.prototype.readDoubleLE = function (offset, noAssert) {
-  return _readDouble(this, offset, true, noAssert)
+  return readDouble(this, offset, true, noAssert)
 }
 
 Buffer.prototype.readDoubleBE = function (offset, noAssert) {
-  return _readDouble(this, offset, false, noAssert)
+  return readDouble(this, offset, false, noAssert)
 }
 
 Buffer.prototype.writeUInt8 = function (value, offset, noAssert) {
@@ -4360,9 +4602,10 @@ Buffer.prototype.writeUInt8 = function (value, offset, noAssert) {
   if (offset >= this.length) return
 
   this[offset] = value
+  return offset + 1
 }
 
-function _writeUInt16 (buf, value, offset, littleEndian, noAssert) {
+function writeUInt16 (buf, value, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(value !== undefined && value !== null, 'missing value')
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
@@ -4380,17 +4623,18 @@ function _writeUInt16 (buf, value, offset, littleEndian, noAssert) {
         (value & (0xff << (8 * (littleEndian ? i : 1 - i)))) >>>
             (littleEndian ? i : 1 - i) * 8
   }
+  return offset + 2
 }
 
 Buffer.prototype.writeUInt16LE = function (value, offset, noAssert) {
-  _writeUInt16(this, value, offset, true, noAssert)
+  return writeUInt16(this, value, offset, true, noAssert)
 }
 
 Buffer.prototype.writeUInt16BE = function (value, offset, noAssert) {
-  _writeUInt16(this, value, offset, false, noAssert)
+  return writeUInt16(this, value, offset, false, noAssert)
 }
 
-function _writeUInt32 (buf, value, offset, littleEndian, noAssert) {
+function writeUInt32 (buf, value, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(value !== undefined && value !== null, 'missing value')
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
@@ -4407,14 +4651,15 @@ function _writeUInt32 (buf, value, offset, littleEndian, noAssert) {
     buf[offset + i] =
         (value >>> (littleEndian ? i : 3 - i) * 8) & 0xff
   }
+  return offset + 4
 }
 
 Buffer.prototype.writeUInt32LE = function (value, offset, noAssert) {
-  _writeUInt32(this, value, offset, true, noAssert)
+  return writeUInt32(this, value, offset, true, noAssert)
 }
 
 Buffer.prototype.writeUInt32BE = function (value, offset, noAssert) {
-  _writeUInt32(this, value, offset, false, noAssert)
+  return writeUInt32(this, value, offset, false, noAssert)
 }
 
 Buffer.prototype.writeInt8 = function (value, offset, noAssert) {
@@ -4432,9 +4677,10 @@ Buffer.prototype.writeInt8 = function (value, offset, noAssert) {
     this.writeUInt8(value, offset, noAssert)
   else
     this.writeUInt8(0xff + value + 1, offset, noAssert)
+  return offset + 1
 }
 
-function _writeInt16 (buf, value, offset, littleEndian, noAssert) {
+function writeInt16 (buf, value, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(value !== undefined && value !== null, 'missing value')
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
@@ -4448,20 +4694,21 @@ function _writeInt16 (buf, value, offset, littleEndian, noAssert) {
     return
 
   if (value >= 0)
-    _writeUInt16(buf, value, offset, littleEndian, noAssert)
+    writeUInt16(buf, value, offset, littleEndian, noAssert)
   else
-    _writeUInt16(buf, 0xffff + value + 1, offset, littleEndian, noAssert)
+    writeUInt16(buf, 0xffff + value + 1, offset, littleEndian, noAssert)
+  return offset + 2
 }
 
 Buffer.prototype.writeInt16LE = function (value, offset, noAssert) {
-  _writeInt16(this, value, offset, true, noAssert)
+  return writeInt16(this, value, offset, true, noAssert)
 }
 
 Buffer.prototype.writeInt16BE = function (value, offset, noAssert) {
-  _writeInt16(this, value, offset, false, noAssert)
+  return writeInt16(this, value, offset, false, noAssert)
 }
 
-function _writeInt32 (buf, value, offset, littleEndian, noAssert) {
+function writeInt32 (buf, value, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(value !== undefined && value !== null, 'missing value')
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
@@ -4475,20 +4722,21 @@ function _writeInt32 (buf, value, offset, littleEndian, noAssert) {
     return
 
   if (value >= 0)
-    _writeUInt32(buf, value, offset, littleEndian, noAssert)
+    writeUInt32(buf, value, offset, littleEndian, noAssert)
   else
-    _writeUInt32(buf, 0xffffffff + value + 1, offset, littleEndian, noAssert)
+    writeUInt32(buf, 0xffffffff + value + 1, offset, littleEndian, noAssert)
+  return offset + 4
 }
 
 Buffer.prototype.writeInt32LE = function (value, offset, noAssert) {
-  _writeInt32(this, value, offset, true, noAssert)
+  return writeInt32(this, value, offset, true, noAssert)
 }
 
 Buffer.prototype.writeInt32BE = function (value, offset, noAssert) {
-  _writeInt32(this, value, offset, false, noAssert)
+  return writeInt32(this, value, offset, false, noAssert)
 }
 
-function _writeFloat (buf, value, offset, littleEndian, noAssert) {
+function writeFloat (buf, value, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(value !== undefined && value !== null, 'missing value')
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
@@ -4502,17 +4750,18 @@ function _writeFloat (buf, value, offset, littleEndian, noAssert) {
     return
 
   ieee754.write(buf, value, offset, littleEndian, 23, 4)
+  return offset + 4
 }
 
 Buffer.prototype.writeFloatLE = function (value, offset, noAssert) {
-  _writeFloat(this, value, offset, true, noAssert)
+  return writeFloat(this, value, offset, true, noAssert)
 }
 
 Buffer.prototype.writeFloatBE = function (value, offset, noAssert) {
-  _writeFloat(this, value, offset, false, noAssert)
+  return writeFloat(this, value, offset, false, noAssert)
 }
 
-function _writeDouble (buf, value, offset, littleEndian, noAssert) {
+function writeDouble (buf, value, offset, littleEndian, noAssert) {
   if (!noAssert) {
     assert(value !== undefined && value !== null, 'missing value')
     assert(typeof littleEndian === 'boolean', 'missing or invalid endian')
@@ -4527,14 +4776,15 @@ function _writeDouble (buf, value, offset, littleEndian, noAssert) {
     return
 
   ieee754.write(buf, value, offset, littleEndian, 52, 8)
+  return offset + 8
 }
 
 Buffer.prototype.writeDoubleLE = function (value, offset, noAssert) {
-  _writeDouble(this, value, offset, true, noAssert)
+  return writeDouble(this, value, offset, true, noAssert)
 }
 
 Buffer.prototype.writeDoubleBE = function (value, offset, noAssert) {
-  _writeDouble(this, value, offset, false, noAssert)
+  return writeDouble(this, value, offset, false, noAssert)
 }
 
 // fill(value, start=0, end=buffer.length)
@@ -4543,11 +4793,6 @@ Buffer.prototype.fill = function (value, start, end) {
   if (!start) start = 0
   if (!end) end = this.length
 
-  if (typeof value === 'string') {
-    value = value.charCodeAt(0)
-  }
-
-  assert(typeof value === 'number' && !isNaN(value), 'value is not a number')
   assert(end >= start, 'end < start')
 
   // Fill 0 bytes; we're done
@@ -4557,9 +4802,20 @@ Buffer.prototype.fill = function (value, start, end) {
   assert(start >= 0 && start < this.length, 'start out of bounds')
   assert(end >= 0 && end <= this.length, 'end out of bounds')
 
-  for (var i = start; i < end; i++) {
-    this[i] = value
+  var i
+  if (typeof value === 'number') {
+    for (i = start; i < end; i++) {
+      this[i] = value
+    }
+  } else {
+    var bytes = utf8ToBytes(value.toString())
+    var len = bytes.length
+    for (i = start; i < end; i++) {
+      this[i] = bytes[i % len]
+    }
   }
+
+  return this
 }
 
 Buffer.prototype.inspect = function () {
@@ -4585,8 +4841,9 @@ Buffer.prototype.toArrayBuffer = function () {
       return (new Buffer(this)).buffer
     } else {
       var buf = new Uint8Array(this.length)
-      for (var i = 0, len = buf.length; i < len; i += 1)
+      for (var i = 0, len = buf.length; i < len; i += 1) {
         buf[i] = this[i]
+      }
       return buf.buffer
     }
   } else {
@@ -4596,11 +4853,6 @@ Buffer.prototype.toArrayBuffer = function () {
 
 // HELPER FUNCTIONS
 // ================
-
-function stringtrim (str) {
-  if (str.trim) return str.trim()
-  return str.replace(/^\s+|\s+$/g, '')
-}
 
 var BP = Buffer.prototype
 
@@ -4622,6 +4874,8 @@ Buffer._augment = function (arr) {
   arr.toString = BP.toString
   arr.toLocaleString = BP.toString
   arr.toJSON = BP.toJSON
+  arr.equals = BP.equals
+  arr.compare = BP.compare
   arr.copy = BP.copy
   arr.slice = BP.slice
   arr.readUInt8 = BP.readUInt8
@@ -4657,6 +4911,11 @@ Buffer._augment = function (arr) {
   arr.toArrayBuffer = BP.toArrayBuffer
 
   return arr
+}
+
+function stringtrim (str) {
+  if (str.trim) return str.trim()
+  return str.replace(/^\s+|\s+$/g, '')
 }
 
 // slice(start, end)
@@ -4699,14 +4958,15 @@ function utf8ToBytes (str) {
   var byteArray = []
   for (var i = 0; i < str.length; i++) {
     var b = str.charCodeAt(i)
-    if (b <= 0x7F)
-      byteArray.push(str.charCodeAt(i))
-    else {
+    if (b <= 0x7F) {
+      byteArray.push(b)
+    } else {
       var start = i
       if (b >= 0xD800 && b <= 0xDFFF) i++
       var h = encodeURIComponent(str.slice(start, i+1)).substr(1).split('%')
-      for (var j = 0; j < h.length; j++)
+      for (var j = 0; j < h.length; j++) {
         byteArray.push(parseInt(h[j], 16))
+      }
     }
   }
   return byteArray
@@ -4740,7 +5000,6 @@ function base64ToBytes (str) {
 }
 
 function blitBuffer (src, dst, offset, length) {
-  var pos
   for (var i = 0; i < length; i++) {
     if ((i + offset >= dst.length) || (i >= src.length))
       break
@@ -4786,7 +5045,7 @@ function assert (test, message) {
   if (!test) throw new Error(message || 'Failed assertion')
 }
 
-},{"base64-js":41,"ieee754":42}],41:[function(require,module,exports){
+},{"base64-js":40,"ieee754":41}],40:[function(require,module,exports){
 var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 ;(function (exports) {
@@ -4909,7 +5168,7 @@ var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 	module.exports.fromByteArray = uint8ToBase64
 }())
 
-},{}],42:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 exports.read = function(buffer, offset, isLE, mLen, nBytes) {
   var e, m,
       eLen = nBytes * 8 - mLen - 1,
@@ -4995,7 +5254,7 @@ exports.write = function(buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128;
 };
 
-},{}],43:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5143,7 +5402,10 @@ EventEmitter.prototype.addListener = function(type, listener) {
                     'leak detected. %d listeners added. ' +
                     'Use emitter.setMaxListeners() to increase limit.',
                     this._events[type].length);
-      console.trace();
+      if (typeof console.trace === 'function') {
+        // not supported in IE 10
+        console.trace();
+      }
     }
   }
 
@@ -5297,7 +5559,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],44:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 var http = module.exports;
 var EventEmitter = require('events').EventEmitter;
 var Request = require('./lib/request');
@@ -5436,7 +5698,7 @@ http.STATUS_CODES = {
     510 : 'Not Extended',               // RFC 2774
     511 : 'Network Authentication Required' // RFC 6585
 };
-},{"./lib/request":45,"events":43,"url":63}],45:[function(require,module,exports){
+},{"./lib/request":44,"events":42,"url":69}],44:[function(require,module,exports){
 var Stream = require('stream');
 var Response = require('./response');
 var Base64 = require('Base64');
@@ -5627,7 +5889,7 @@ var indexOf = function (xs, x) {
     return -1;
 };
 
-},{"./response":46,"Base64":47,"inherits":49,"stream":56}],46:[function(require,module,exports){
+},{"./response":45,"Base64":46,"inherits":48,"stream":67}],45:[function(require,module,exports){
 var Stream = require('stream');
 var util = require('util');
 
@@ -5749,7 +6011,7 @@ var isArray = Array.isArray || function (xs) {
     return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{"stream":56,"util":65}],47:[function(require,module,exports){
+},{"stream":67,"util":71}],46:[function(require,module,exports){
 ;(function () {
 
   var object = typeof exports != 'undefined' ? exports : this; // #8: web workers
@@ -5811,7 +6073,7 @@ var isArray = Array.isArray || function (xs) {
 
 }());
 
-},{}],48:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 var http = require('http');
 
 var https = module.exports;
@@ -5826,9 +6088,9 @@ https.request = function (params, cb) {
     return http.request.call(this, params, cb);
 }
 
-},{"http":44}],49:[function(require,module,exports){
+},{"http":43}],48:[function(require,module,exports){
 module.exports=require(33)
-},{}],50:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -5876,8 +6138,11 @@ process.argv = [];
 function noop() {}
 
 process.on = noop;
+process.addListener = noop;
 process.once = noop;
 process.off = noop;
+process.removeListener = noop;
+process.removeAllListeners = noop;
 process.emit = noop;
 
 process.binding = function (name) {
@@ -5890,7 +6155,7 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}],51:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 (function (global){
 /*! http://mths.be/punycode v1.2.4 by @mathias */
 ;(function(root) {
@@ -6401,7 +6666,7 @@ process.chdir = function (dir) {
 }(this));
 
 }).call(this,typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],52:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6487,7 +6752,7 @@ var isArray = Array.isArray || function (xs) {
   return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{}],53:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6538,7 +6803,7 @@ module.exports = function(obj, sep, eq, name) {
     return map(objectKeys(obj), function(k) {
       var ks = encodeURIComponent(stringifyPrimitive(k)) + eq;
       if (isArray(obj[k])) {
-        return obj[k].map(function(v) {
+        return map(obj[k], function(v) {
           return ks + encodeURIComponent(stringifyPrimitive(v));
         }).join(sep);
       } else {
@@ -6574,314 +6839,20 @@ var objectKeys = Object.keys || function (obj) {
   return res;
 };
 
-},{}],54:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 'use strict';
 
 exports.decode = exports.parse = require('./decode');
 exports.encode = exports.stringify = require('./encode');
 
-},{"./decode":52,"./encode":53}],55:[function(require,module,exports){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
+},{"./decode":51,"./encode":52}],54:[function(require,module,exports){
+module.exports = require("./lib/_stream_duplex.js")
 
-// a duplex stream is just a stream that is both readable and writable.
-// Since JS doesn't have multiple prototypal inheritance, this class
-// prototypally inherits from Readable, and then parasitically from
-// Writable.
-
-module.exports = Duplex;
-var inherits = require('inherits');
-var setImmediate = require('process/browser.js').nextTick;
-var Readable = require('./readable.js');
-var Writable = require('./writable.js');
-
-inherits(Duplex, Readable);
-
-Duplex.prototype.write = Writable.prototype.write;
-Duplex.prototype.end = Writable.prototype.end;
-Duplex.prototype._write = Writable.prototype._write;
-
-function Duplex(options) {
-  if (!(this instanceof Duplex))
-    return new Duplex(options);
-
-  Readable.call(this, options);
-  Writable.call(this, options);
-
-  if (options && options.readable === false)
-    this.readable = false;
-
-  if (options && options.writable === false)
-    this.writable = false;
-
-  this.allowHalfOpen = true;
-  if (options && options.allowHalfOpen === false)
-    this.allowHalfOpen = false;
-
-  this.once('end', onend);
-}
-
-// the no-half-open enforcer
-function onend() {
-  // if we allow half-open state, or if the writable side ended,
-  // then we're ok.
-  if (this.allowHalfOpen || this._writableState.ended)
-    return;
-
-  // no more data can be written.
-  // But allow more writes to happen in this tick.
-  var self = this;
-  setImmediate(function () {
-    self.end();
-  });
-}
-
-},{"./readable.js":59,"./writable.js":61,"inherits":49,"process/browser.js":57}],56:[function(require,module,exports){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-module.exports = Stream;
-
-var EE = require('events').EventEmitter;
-var inherits = require('inherits');
-
-inherits(Stream, EE);
-Stream.Readable = require('./readable.js');
-Stream.Writable = require('./writable.js');
-Stream.Duplex = require('./duplex.js');
-Stream.Transform = require('./transform.js');
-Stream.PassThrough = require('./passthrough.js');
-
-// Backwards-compat with node 0.4.x
-Stream.Stream = Stream;
-
-
-
-// old-style streams.  Note that the pipe method (the only relevant
-// part of this class) is overridden in the Readable class.
-
-function Stream() {
-  EE.call(this);
-}
-
-Stream.prototype.pipe = function(dest, options) {
-  var source = this;
-
-  function ondata(chunk) {
-    if (dest.writable) {
-      if (false === dest.write(chunk) && source.pause) {
-        source.pause();
-      }
-    }
-  }
-
-  source.on('data', ondata);
-
-  function ondrain() {
-    if (source.readable && source.resume) {
-      source.resume();
-    }
-  }
-
-  dest.on('drain', ondrain);
-
-  // If the 'end' option is not supplied, dest.end() will be called when
-  // source gets the 'end' or 'close' events.  Only dest.end() once.
-  if (!dest._isStdio && (!options || options.end !== false)) {
-    source.on('end', onend);
-    source.on('close', onclose);
-  }
-
-  var didOnEnd = false;
-  function onend() {
-    if (didOnEnd) return;
-    didOnEnd = true;
-
-    dest.end();
-  }
-
-
-  function onclose() {
-    if (didOnEnd) return;
-    didOnEnd = true;
-
-    if (typeof dest.destroy === 'function') dest.destroy();
-  }
-
-  // don't leave dangling pipes when there are errors.
-  function onerror(er) {
-    cleanup();
-    if (EE.listenerCount(this, 'error') === 0) {
-      throw er; // Unhandled stream error in pipe.
-    }
-  }
-
-  source.on('error', onerror);
-  dest.on('error', onerror);
-
-  // remove all the event listeners that were added.
-  function cleanup() {
-    source.removeListener('data', ondata);
-    dest.removeListener('drain', ondrain);
-
-    source.removeListener('end', onend);
-    source.removeListener('close', onclose);
-
-    source.removeListener('error', onerror);
-    dest.removeListener('error', onerror);
-
-    source.removeListener('end', cleanup);
-    source.removeListener('close', cleanup);
-
-    dest.removeListener('close', cleanup);
-  }
-
-  source.on('end', cleanup);
-  source.on('close', cleanup);
-
-  dest.on('close', cleanup);
-
-  dest.emit('pipe', source);
-
-  // Allow for unix-like usage: A.pipe(B).pipe(C)
-  return dest;
-};
-
-},{"./duplex.js":55,"./passthrough.js":58,"./readable.js":59,"./transform.js":60,"./writable.js":61,"events":43,"inherits":49}],57:[function(require,module,exports){
-// shim for using process in browser
-
-var process = module.exports = {};
-
-process.nextTick = (function () {
-    var canSetImmediate = typeof window !== 'undefined'
-    && window.setImmediate;
-    var canPost = typeof window !== 'undefined'
-    && window.postMessage && window.addEventListener
-    ;
-
-    if (canSetImmediate) {
-        return function (f) { return window.setImmediate(f) };
-    }
-
-    if (canPost) {
-        var queue = [];
-        window.addEventListener('message', function (ev) {
-            var source = ev.source;
-            if ((source === window || source === null) && ev.data === 'process-tick') {
-                ev.stopPropagation();
-                if (queue.length > 0) {
-                    var fn = queue.shift();
-                    fn();
-                }
-            }
-        }, true);
-
-        return function nextTick(fn) {
-            queue.push(fn);
-            window.postMessage('process-tick', '*');
-        };
-    }
-
-    return function nextTick(fn) {
-        setTimeout(fn, 0);
-    };
-})();
-
-process.title = 'browser';
-process.browser = true;
-process.env = {};
-process.argv = [];
-
-process.binding = function (name) {
-    throw new Error('process.binding is not supported');
-}
-
-// TODO(shtylman)
-process.cwd = function () { return '/' };
-process.chdir = function (dir) {
-    throw new Error('process.chdir is not supported');
-};
-
-},{}],58:[function(require,module,exports){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-// a passthrough stream.
-// basically just the most minimal sort of Transform stream.
-// Every written chunk gets output as-is.
-
-module.exports = PassThrough;
-
-var Transform = require('./transform.js');
-var inherits = require('inherits');
-inherits(PassThrough, Transform);
-
-function PassThrough(options) {
-  if (!(this instanceof PassThrough))
-    return new PassThrough(options);
-
-  Transform.call(this, options);
-}
-
-PassThrough.prototype._transform = function(chunk, encoding, cb) {
-  cb(null, chunk);
-};
-
-},{"./transform.js":60,"inherits":49}],59:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":55}],55:[function(require,module,exports){
+arguments[4][27][0].apply(exports,arguments)
+},{"./_stream_readable":57,"./_stream_writable":59,"UPikzY":49,"core-util-is":60,"inherits":48}],56:[function(require,module,exports){
+arguments[4][28][0].apply(exports,arguments)
+},{"./_stream_transform":58,"core-util-is":60,"inherits":48}],57:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -6905,16 +6876,36 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 module.exports = Readable;
+
+/*<replacement>*/
+var isArray = require('isarray');
+/*</replacement>*/
+
+
+/*<replacement>*/
+var Buffer = require('buffer').Buffer;
+/*</replacement>*/
+
 Readable.ReadableState = ReadableState;
 
 var EE = require('events').EventEmitter;
-var Stream = require('./index.js');
-var Buffer = require('buffer').Buffer;
-var setImmediate = require('process/browser.js').nextTick;
+
+/*<replacement>*/
+if (!EE.listenerCount) EE.listenerCount = function(emitter, type) {
+  return emitter.listeners(type).length;
+};
+/*</replacement>*/
+
+var Stream = require('stream');
+
+/*<replacement>*/
+var util = require('core-util-is');
+util.inherits = require('inherits');
+/*</replacement>*/
+
 var StringDecoder;
 
-var inherits = require('inherits');
-inherits(Readable, Stream);
+util.inherits(Readable, Stream);
 
 function ReadableState(options, stream) {
   options = options || {};
@@ -6978,7 +6969,7 @@ function ReadableState(options, stream) {
   this.encoding = null;
   if (options.encoding) {
     if (!StringDecoder)
-      StringDecoder = require('string_decoder').StringDecoder;
+      StringDecoder = require('string_decoder/').StringDecoder;
     this.decoder = new StringDecoder(options.encoding);
     this.encoding = options.encoding;
   }
@@ -7079,7 +7070,7 @@ function needMoreData(state) {
 // backwards compatibility.
 Readable.prototype.setEncoding = function(enc) {
   if (!StringDecoder)
-    StringDecoder = require('string_decoder').StringDecoder;
+    StringDecoder = require('string_decoder/').StringDecoder;
   this._readableState.decoder = new StringDecoder(enc);
   this._readableState.encoding = enc;
 };
@@ -7284,7 +7275,7 @@ function emitReadable(stream) {
 
   state.emittedReadable = true;
   if (state.sync)
-    setImmediate(function() {
+    process.nextTick(function() {
       emitReadable_(stream);
     });
   else
@@ -7305,7 +7296,7 @@ function emitReadable_(stream) {
 function maybeReadMore(stream, state) {
   if (!state.readingMore) {
     state.readingMore = true;
-    setImmediate(function() {
+    process.nextTick(function() {
       maybeReadMore_(stream, state);
     });
   }
@@ -7356,7 +7347,7 @@ Readable.prototype.pipe = function(dest, pipeOpts) {
 
   var endFn = doEnd ? onend : cleanup;
   if (state.endEmitted)
-    setImmediate(endFn);
+    process.nextTick(endFn);
   else
     src.once('end', endFn);
 
@@ -7398,14 +7389,22 @@ Readable.prototype.pipe = function(dest, pipeOpts) {
 
   // if the dest has an error, then stop piping into it.
   // however, don't suppress the throwing behavior for this.
-  // check for listeners before emit removes one-time listeners.
-  var errListeners = EE.listenerCount(dest, 'error');
   function onerror(er) {
     unpipe();
-    if (errListeners === 0 && EE.listenerCount(dest, 'error') === 0)
+    dest.removeListener('error', onerror);
+    if (EE.listenerCount(dest, 'error') === 0)
       dest.emit('error', er);
   }
-  dest.once('error', onerror);
+  // This is a brutally ugly hack to make sure that our error handler
+  // is attached before any userland ones.  NEVER DO THIS.
+  if (!dest._events || !dest._events.error)
+    dest.on('error', onerror);
+  else if (isArray(dest._events.error))
+    dest._events.error.unshift(onerror);
+  else
+    dest._events.error = [onerror, dest._events.error];
+
+
 
   // Both close and finish should trigger unpipe, but only once.
   function onclose() {
@@ -7435,7 +7434,7 @@ Readable.prototype.pipe = function(dest, pipeOpts) {
     this.on('readable', pipeOnReadable);
 
     state.flowing = true;
-    setImmediate(function() {
+    process.nextTick(function() {
       flow(src);
     });
   }
@@ -7638,7 +7637,7 @@ function emitDataEvents(stream, startPaused) {
   stream.resume = function() {
     paused = false;
     if (readable)
-      setImmediate(function() {
+      process.nextTick(function() {
         stream.emit('readable');
       });
     else
@@ -7695,9 +7694,7 @@ Readable.prototype.wrap = function(stream) {
   // proxy certain important events.
   var events = ['error', 'close', 'destroy', 'pause', 'resume'];
   forEach(events, function(ev) {
-    stream.on(ev, function (x) {
-      return self.emit.apply(self, ev, x);
-    });
+    stream.on(ev, self.emit.bind(self, ev));
   });
 
   // when we try to consume some more bytes, simply unpause the
@@ -7793,7 +7790,7 @@ function endReadable(stream) {
 
   if (!state.endEmitted && state.calledRead) {
     state.ended = true;
-    setImmediate(function() {
+    process.nextTick(function() {
       // Check that we didn't get one last unshift.
       if (!state.endEmitted && state.length === 0) {
         state.endEmitted = true;
@@ -7817,8 +7814,8 @@ function indexOf (xs, x) {
   return -1;
 }
 
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"))
-},{"./index.js":56,"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"buffer":40,"events":43,"inherits":49,"process/browser.js":57,"string_decoder":62}],60:[function(require,module,exports){
+}).call(this,require("UPikzY"))
+},{"UPikzY":49,"buffer":39,"core-util-is":60,"events":42,"inherits":48,"isarray":61,"stream":67,"string_decoder/":62}],58:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7839,6 +7836,7 @@ function indexOf (xs, x) {
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 
 // a transform stream is a readable/writable stream where you do
 // something with the data.  Sometimes it's called a "filter",
@@ -7884,9 +7882,14 @@ function indexOf (xs, x) {
 
 module.exports = Transform;
 
-var Duplex = require('./duplex.js');
-var inherits = require('inherits');
-inherits(Transform, Duplex);
+var Duplex = require('./_stream_duplex');
+
+/*<replacement>*/
+var util = require('core-util-is');
+util.inherits = require('inherits');
+/*</replacement>*/
+
+util.inherits(Transform, Duplex);
 
 
 function TransformState(options, stream) {
@@ -7994,7 +7997,7 @@ Transform.prototype._write = function(chunk, encoding, cb) {
 Transform.prototype._read = function(n) {
   var ts = this._transformState;
 
-  if (ts.writechunk && ts.writecb && !ts.transforming) {
+  if (ts.writechunk !== null && ts.writecb && !ts.transforming) {
     ts.transforming = true;
     this._transform(ts.writechunk, ts.writeencoding, ts.afterTransform);
   } else {
@@ -8024,7 +8027,8 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./duplex.js":55,"inherits":49}],61:[function(require,module,exports){
+},{"./_stream_duplex":55,"core-util-is":60,"inherits":48}],59:[function(require,module,exports){
+(function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -8051,27 +8055,23 @@ function done(stream, er) {
 // the drain event emission and buffering.
 
 module.exports = Writable;
+
+/*<replacement>*/
+var Buffer = require('buffer').Buffer;
+/*</replacement>*/
+
 Writable.WritableState = WritableState;
 
-var isUint8Array = typeof Uint8Array !== 'undefined'
-  ? function (x) { return x instanceof Uint8Array }
-  : function (x) {
-    return x && x.constructor && x.constructor.name === 'Uint8Array'
-  }
-;
-var isArrayBuffer = typeof ArrayBuffer !== 'undefined'
-  ? function (x) { return x instanceof ArrayBuffer }
-  : function (x) {
-    return x && x.constructor && x.constructor.name === 'ArrayBuffer'
-  }
-;
 
-var inherits = require('inherits');
-var Stream = require('./index.js');
-var setImmediate = require('process/browser.js').nextTick;
-var Buffer = require('buffer').Buffer;
+/*<replacement>*/
+var util = require('core-util-is');
+util.inherits = require('inherits');
+/*</replacement>*/
 
-inherits(Writable, Stream);
+
+var Stream = require('stream');
+
+util.inherits(Writable, Stream);
 
 function WriteReq(chunk, encoding, cb) {
   this.chunk = chunk;
@@ -8145,12 +8145,17 @@ function WritableState(options, stream) {
   this.writelen = 0;
 
   this.buffer = [];
+
+  // True if the error was already emitted and should not be thrown again
+  this.errorEmitted = false;
 }
 
 function Writable(options) {
+  var Duplex = require('./_stream_duplex');
+
   // Writable ctor is applied to Duplexes, though they're not
   // instanceof Writable, they're instanceof Readable.
-  if (!(this instanceof Writable) && !(this instanceof Stream.Duplex))
+  if (!(this instanceof Writable) && !(this instanceof Duplex))
     return new Writable(options);
 
   this._writableState = new WritableState(options, this);
@@ -8171,7 +8176,7 @@ function writeAfterEnd(stream, state, cb) {
   var er = new Error('write after end');
   // TODO: defer error events consistently everywhere, not just the cb
   stream.emit('error', er);
-  setImmediate(function() {
+  process.nextTick(function() {
     cb(er);
   });
 }
@@ -8190,7 +8195,7 @@ function validChunk(stream, state, chunk, cb) {
       !state.objectMode) {
     var er = new TypeError('Invalid non-string/buffer chunk');
     stream.emit('error', er);
-    setImmediate(function() {
+    process.nextTick(function() {
       cb(er);
     });
     valid = false;
@@ -8207,11 +8212,6 @@ Writable.prototype.write = function(chunk, encoding, cb) {
     encoding = null;
   }
 
-  if (!Buffer.isBuffer(chunk) && isUint8Array(chunk))
-    chunk = new Buffer(chunk);
-  if (isArrayBuffer(chunk) && typeof Uint8Array !== 'undefined')
-    chunk = new Buffer(new Uint8Array(chunk));
-  
   if (Buffer.isBuffer(chunk))
     encoding = 'buffer';
   else if (!encoding)
@@ -8242,12 +8242,16 @@ function decodeChunk(state, chunk, encoding) {
 // If we return false, then we need a drain event, so set that flag.
 function writeOrBuffer(stream, state, chunk, encoding, cb) {
   chunk = decodeChunk(state, chunk, encoding);
+  if (Buffer.isBuffer(chunk))
+    encoding = 'buffer';
   var len = state.objectMode ? 1 : chunk.length;
 
   state.length += len;
 
   var ret = state.length < state.highWaterMark;
-  state.needDrain = !ret;
+  // we must ensure that previous needDrain will not be reset to false.
+  if (!ret)
+    state.needDrain = true;
 
   if (state.writing)
     state.buffer.push(new WriteReq(chunk, encoding, cb));
@@ -8268,12 +8272,13 @@ function doWrite(stream, state, len, chunk, encoding, cb) {
 
 function onwriteError(stream, state, sync, er, cb) {
   if (sync)
-    setImmediate(function() {
+    process.nextTick(function() {
       cb(er);
     });
   else
     cb(er);
 
+  stream._writableState.errorEmitted = true;
   stream.emit('error', er);
 }
 
@@ -8301,7 +8306,7 @@ function onwrite(stream, er) {
       clearBuffer(stream, state);
 
     if (sync) {
-      setImmediate(function() {
+      process.nextTick(function() {
         afterWrite(stream, state, finished, cb);
       });
     } else {
@@ -8405,14 +8410,167 @@ function endWritable(stream, state, cb) {
   finishMaybe(stream, state);
   if (cb) {
     if (state.finished)
-      setImmediate(cb);
+      process.nextTick(cb);
     else
       stream.once('finish', cb);
   }
   state.ended = true;
 }
 
-},{"./index.js":56,"buffer":40,"inherits":49,"process/browser.js":57}],62:[function(require,module,exports){
+}).call(this,require("UPikzY"))
+},{"./_stream_duplex":55,"UPikzY":49,"buffer":39,"core-util-is":60,"inherits":48,"stream":67}],60:[function(require,module,exports){
+module.exports=require(32)
+},{"buffer":39}],61:[function(require,module,exports){
+module.exports=require(34)
+},{}],62:[function(require,module,exports){
+module.exports=require(35)
+},{"buffer":39}],63:[function(require,module,exports){
+module.exports = require("./lib/_stream_passthrough.js")
+
+},{"./lib/_stream_passthrough.js":56}],64:[function(require,module,exports){
+exports = module.exports = require('./lib/_stream_readable.js');
+exports.Readable = exports;
+exports.Writable = require('./lib/_stream_writable.js');
+exports.Duplex = require('./lib/_stream_duplex.js');
+exports.Transform = require('./lib/_stream_transform.js');
+exports.PassThrough = require('./lib/_stream_passthrough.js');
+
+},{"./lib/_stream_duplex.js":55,"./lib/_stream_passthrough.js":56,"./lib/_stream_readable.js":57,"./lib/_stream_transform.js":58,"./lib/_stream_writable.js":59}],65:[function(require,module,exports){
+module.exports = require("./lib/_stream_transform.js")
+
+},{"./lib/_stream_transform.js":58}],66:[function(require,module,exports){
+module.exports = require("./lib/_stream_writable.js")
+
+},{"./lib/_stream_writable.js":59}],67:[function(require,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+module.exports = Stream;
+
+var EE = require('events').EventEmitter;
+var inherits = require('inherits');
+
+inherits(Stream, EE);
+Stream.Readable = require('readable-stream/readable.js');
+Stream.Writable = require('readable-stream/writable.js');
+Stream.Duplex = require('readable-stream/duplex.js');
+Stream.Transform = require('readable-stream/transform.js');
+Stream.PassThrough = require('readable-stream/passthrough.js');
+
+// Backwards-compat with node 0.4.x
+Stream.Stream = Stream;
+
+
+
+// old-style streams.  Note that the pipe method (the only relevant
+// part of this class) is overridden in the Readable class.
+
+function Stream() {
+  EE.call(this);
+}
+
+Stream.prototype.pipe = function(dest, options) {
+  var source = this;
+
+  function ondata(chunk) {
+    if (dest.writable) {
+      if (false === dest.write(chunk) && source.pause) {
+        source.pause();
+      }
+    }
+  }
+
+  source.on('data', ondata);
+
+  function ondrain() {
+    if (source.readable && source.resume) {
+      source.resume();
+    }
+  }
+
+  dest.on('drain', ondrain);
+
+  // If the 'end' option is not supplied, dest.end() will be called when
+  // source gets the 'end' or 'close' events.  Only dest.end() once.
+  if (!dest._isStdio && (!options || options.end !== false)) {
+    source.on('end', onend);
+    source.on('close', onclose);
+  }
+
+  var didOnEnd = false;
+  function onend() {
+    if (didOnEnd) return;
+    didOnEnd = true;
+
+    dest.end();
+  }
+
+
+  function onclose() {
+    if (didOnEnd) return;
+    didOnEnd = true;
+
+    if (typeof dest.destroy === 'function') dest.destroy();
+  }
+
+  // don't leave dangling pipes when there are errors.
+  function onerror(er) {
+    cleanup();
+    if (EE.listenerCount(this, 'error') === 0) {
+      throw er; // Unhandled stream error in pipe.
+    }
+  }
+
+  source.on('error', onerror);
+  dest.on('error', onerror);
+
+  // remove all the event listeners that were added.
+  function cleanup() {
+    source.removeListener('data', ondata);
+    dest.removeListener('drain', ondrain);
+
+    source.removeListener('end', onend);
+    source.removeListener('close', onclose);
+
+    source.removeListener('error', onerror);
+    dest.removeListener('error', onerror);
+
+    source.removeListener('end', cleanup);
+    source.removeListener('close', cleanup);
+
+    dest.removeListener('close', cleanup);
+  }
+
+  source.on('end', cleanup);
+  source.on('close', cleanup);
+
+  dest.on('close', cleanup);
+
+  dest.emit('pipe', source);
+
+  // Allow for unix-like usage: A.pipe(B).pipe(C)
+  return dest;
+};
+
+},{"events":42,"inherits":48,"readable-stream/duplex.js":54,"readable-stream/passthrough.js":63,"readable-stream/readable.js":64,"readable-stream/transform.js":65,"readable-stream/writable.js":66}],68:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -8605,11 +8763,7 @@ function base64DetectIncompleteChar(buffer) {
   return incomplete;
 }
 
-},{"buffer":40}],63:[function(require,module,exports){
-/*jshint strict:true node:true es5:true onevar:true laxcomma:true laxbreak:true eqeqeq:true immed:true latedef:true*/
-(function () {
-  "use strict";
-
+},{"buffer":39}],69:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -8638,6 +8792,23 @@ exports.resolve = urlResolve;
 exports.resolveObject = urlResolveObject;
 exports.format = urlFormat;
 
+exports.Url = Url;
+
+function Url() {
+  this.protocol = null;
+  this.slashes = null;
+  this.auth = null;
+  this.host = null;
+  this.port = null;
+  this.hostname = null;
+  this.hash = null;
+  this.search = null;
+  this.query = null;
+  this.pathname = null;
+  this.path = null;
+  this.href = null;
+}
+
 // Reference: RFC 3986, RFC 1808, RFC 2396
 
 // define these here so at least they only have to be
@@ -8650,20 +8821,19 @@ var protocolPattern = /^([a-z0-9.+-]+:)/i,
     delims = ['<', '>', '"', '`', ' ', '\r', '\n', '\t'],
 
     // RFC 2396: characters not allowed for various reasons.
-    unwise = ['{', '}', '|', '\\', '^', '~', '`'].concat(delims),
+    unwise = ['{', '}', '|', '\\', '^', '`'].concat(delims),
 
     // Allowed by RFCs, but cause of XSS attacks.  Always escape these.
-    autoEscape = ['\''].concat(delims),
+    autoEscape = ['\''].concat(unwise),
     // Characters that are never ever allowed in a hostname.
     // Note that any invalid chars are also handled, but these
     // are the ones that are *expected* to be seen, so we fast-path
     // them.
-    nonHostChars = ['%', '/', '?', ';', '#']
-      .concat(unwise).concat(autoEscape),
-    nonAuthChars = ['/', '@', '?', '#'].concat(delims),
+    nonHostChars = ['%', '/', '?', ';', '#'].concat(autoEscape),
+    hostEndingChars = ['/', '?', '#'],
     hostnameMaxLen = 255,
-    hostnamePartPattern = /^[a-zA-Z0-9][a-z0-9A-Z_-]{0,62}$/,
-    hostnamePartStart = /^([a-zA-Z0-9][a-z0-9A-Z_-]{0,62})(.*)$/,
+    hostnamePartPattern = /^[a-z0-9A-Z_-]{0,63}$/,
+    hostnamePartStart = /^([a-z0-9A-Z_-]{0,63})(.*)$/,
     // protocols that can allow "unsafe" and "unwise" chars.
     unsafeProtocol = {
       'javascript': true,
@@ -8673,18 +8843,6 @@ var protocolPattern = /^([a-z0-9.+-]+:)/i,
     hostlessProtocol = {
       'javascript': true,
       'javascript:': true
-    },
-    // protocols that always have a path component.
-    pathedProtocol = {
-      'http': true,
-      'https': true,
-      'ftp': true,
-      'gopher': true,
-      'file': true,
-      'http:': true,
-      'ftp:': true,
-      'gopher:': true,
-      'file:': true
     },
     // protocols that always contain a // bit.
     slashedProtocol = {
@@ -8702,14 +8860,19 @@ var protocolPattern = /^([a-z0-9.+-]+:)/i,
     querystring = require('querystring');
 
 function urlParse(url, parseQueryString, slashesDenoteHost) {
-  if (url && typeof(url) === 'object' && url.href) return url;
+  if (url && isObject(url) && url instanceof Url) return url;
 
-  if (typeof url !== 'string') {
+  var u = new Url;
+  u.parse(url, parseQueryString, slashesDenoteHost);
+  return u;
+}
+
+Url.prototype.parse = function(url, parseQueryString, slashesDenoteHost) {
+  if (!isString(url)) {
     throw new TypeError("Parameter 'url' must be a string, not " + typeof url);
   }
 
-  var out = {},
-      rest = url;
+  var rest = url;
 
   // trim before proceeding.
   // This is to support parse stuff like "  http://foo.com  \n"
@@ -8719,7 +8882,7 @@ function urlParse(url, parseQueryString, slashesDenoteHost) {
   if (proto) {
     proto = proto[0];
     var lowerProto = proto.toLowerCase();
-    out.protocol = lowerProto;
+    this.protocol = lowerProto;
     rest = rest.substr(proto.length);
   }
 
@@ -8731,78 +8894,85 @@ function urlParse(url, parseQueryString, slashesDenoteHost) {
     var slashes = rest.substr(0, 2) === '//';
     if (slashes && !(proto && hostlessProtocol[proto])) {
       rest = rest.substr(2);
-      out.slashes = true;
+      this.slashes = true;
     }
   }
 
   if (!hostlessProtocol[proto] &&
       (slashes || (proto && !slashedProtocol[proto]))) {
+
     // there's a hostname.
     // the first instance of /, ?, ;, or # ends the host.
-    // don't enforce full RFC correctness, just be unstupid about it.
-
+    //
     // If there is an @ in the hostname, then non-host chars *are* allowed
-    // to the left of the first @ sign, unless some non-auth character
+    // to the left of the last @ sign, unless some host-ending character
     // comes *before* the @-sign.
     // URLs are obnoxious.
-    var atSign = rest.indexOf('@');
-    if (atSign !== -1) {
-      var auth = rest.slice(0, atSign);
+    //
+    // ex:
+    // http://a@b@c/ => user:a@b host:c
+    // http://a@b?@c => user:a host:c path:/?@c
 
-      // there *may be* an auth
-      var hasAuth = true;
-      for (var i = 0, l = nonAuthChars.length; i < l; i++) {
-        if (auth.indexOf(nonAuthChars[i]) !== -1) {
-          // not a valid auth.  Something like http://foo.com/bar@baz/
-          hasAuth = false;
-          break;
-        }
-      }
+    // v0.12 TODO(isaacs): This is not quite how Chrome does things.
+    // Review our test case against browsers more comprehensively.
 
-      if (hasAuth) {
-        // pluck off the auth portion.
-        out.auth = decodeURIComponent(auth);
-        rest = rest.substr(atSign + 1);
-      }
+    // find the first instance of any hostEndingChars
+    var hostEnd = -1;
+    for (var i = 0; i < hostEndingChars.length; i++) {
+      var hec = rest.indexOf(hostEndingChars[i]);
+      if (hec !== -1 && (hostEnd === -1 || hec < hostEnd))
+        hostEnd = hec;
     }
 
-    var firstNonHost = -1;
-    for (var i = 0, l = nonHostChars.length; i < l; i++) {
-      var index = rest.indexOf(nonHostChars[i]);
-      if (index !== -1 &&
-          (firstNonHost < 0 || index < firstNonHost)) firstNonHost = index;
-    }
-
-    if (firstNonHost !== -1) {
-      out.host = rest.substr(0, firstNonHost);
-      rest = rest.substr(firstNonHost);
+    // at this point, either we have an explicit point where the
+    // auth portion cannot go past, or the last @ char is the decider.
+    var auth, atSign;
+    if (hostEnd === -1) {
+      // atSign can be anywhere.
+      atSign = rest.lastIndexOf('@');
     } else {
-      out.host = rest;
-      rest = '';
+      // atSign must be in auth portion.
+      // http://a@b/c@d => host:b auth:a path:/c@d
+      atSign = rest.lastIndexOf('@', hostEnd);
     }
+
+    // Now we have a portion which is definitely the auth.
+    // Pull that off.
+    if (atSign !== -1) {
+      auth = rest.slice(0, atSign);
+      rest = rest.slice(atSign + 1);
+      this.auth = decodeURIComponent(auth);
+    }
+
+    // the host is the remaining to the left of the first non-host char
+    hostEnd = -1;
+    for (var i = 0; i < nonHostChars.length; i++) {
+      var hec = rest.indexOf(nonHostChars[i]);
+      if (hec !== -1 && (hostEnd === -1 || hec < hostEnd))
+        hostEnd = hec;
+    }
+    // if we still have not hit it, then the entire thing is a host.
+    if (hostEnd === -1)
+      hostEnd = rest.length;
+
+    this.host = rest.slice(0, hostEnd);
+    rest = rest.slice(hostEnd);
 
     // pull out port.
-    var p = parseHost(out.host);
-    var keys = Object.keys(p);
-    for (var i = 0, l = keys.length; i < l; i++) {
-      var key = keys[i];
-      out[key] = p[key];
-    }
+    this.parseHost();
 
     // we've indicated that there is a hostname,
     // so even if it's empty, it has to be present.
-    out.hostname = out.hostname || '';
+    this.hostname = this.hostname || '';
 
     // if hostname begins with [ and ends with ]
     // assume that it's an IPv6 address.
-    var ipv6Hostname = out.hostname[0] === '[' &&
-        out.hostname[out.hostname.length - 1] === ']';
+    var ipv6Hostname = this.hostname[0] === '[' &&
+        this.hostname[this.hostname.length - 1] === ']';
 
     // validate a little.
-    if (out.hostname.length > hostnameMaxLen) {
-      out.hostname = '';
-    } else if (!ipv6Hostname) {
-      var hostparts = out.hostname.split(/\./);
+    if (!ipv6Hostname) {
+      var hostparts = this.hostname.split(/\./);
       for (var i = 0, l = hostparts.length; i < l; i++) {
         var part = hostparts[i];
         if (!part) continue;
@@ -8830,38 +9000,44 @@ function urlParse(url, parseQueryString, slashesDenoteHost) {
             if (notHost.length) {
               rest = '/' + notHost.join('.') + rest;
             }
-            out.hostname = validParts.join('.');
+            this.hostname = validParts.join('.');
             break;
           }
         }
       }
     }
 
-    // hostnames are always lower case.
-    out.hostname = out.hostname.toLowerCase();
+    if (this.hostname.length > hostnameMaxLen) {
+      this.hostname = '';
+    } else {
+      // hostnames are always lower case.
+      this.hostname = this.hostname.toLowerCase();
+    }
 
     if (!ipv6Hostname) {
       // IDNA Support: Returns a puny coded representation of "domain".
       // It only converts the part of the domain name that
       // has non ASCII characters. I.e. it dosent matter if
       // you call it with a domain that already is in ASCII.
-      var domainArray = out.hostname.split('.');
+      var domainArray = this.hostname.split('.');
       var newOut = [];
       for (var i = 0; i < domainArray.length; ++i) {
         var s = domainArray[i];
         newOut.push(s.match(/[^A-Za-z0-9_-]/) ?
             'xn--' + punycode.encode(s) : s);
       }
-      out.hostname = newOut.join('.');
+      this.hostname = newOut.join('.');
     }
 
-    out.host = (out.hostname || '') +
-        ((out.port) ? ':' + out.port : '');
-    out.href += out.host;
+    var p = this.port ? ':' + this.port : '';
+    var h = this.hostname || '';
+    this.host = h + p;
+    this.href += this.host;
 
     // strip [ and ] from the hostname
+    // the host field still retains them, though
     if (ipv6Hostname) {
-      out.hostname = out.hostname.substr(1, out.hostname.length - 2);
+      this.hostname = this.hostname.substr(1, this.hostname.length - 2);
       if (rest[0] !== '/') {
         rest = '/' + rest;
       }
@@ -8890,38 +9066,39 @@ function urlParse(url, parseQueryString, slashesDenoteHost) {
   var hash = rest.indexOf('#');
   if (hash !== -1) {
     // got a fragment string.
-    out.hash = rest.substr(hash);
+    this.hash = rest.substr(hash);
     rest = rest.slice(0, hash);
   }
   var qm = rest.indexOf('?');
   if (qm !== -1) {
-    out.search = rest.substr(qm);
-    out.query = rest.substr(qm + 1);
+    this.search = rest.substr(qm);
+    this.query = rest.substr(qm + 1);
     if (parseQueryString) {
-      out.query = querystring.parse(out.query);
+      this.query = querystring.parse(this.query);
     }
     rest = rest.slice(0, qm);
   } else if (parseQueryString) {
     // no query string, but parseQueryString still requested
-    out.search = '';
-    out.query = {};
+    this.search = '';
+    this.query = {};
   }
-  if (rest) out.pathname = rest;
-  if (slashedProtocol[proto] &&
-      out.hostname && !out.pathname) {
-    out.pathname = '/';
+  if (rest) this.pathname = rest;
+  if (slashedProtocol[lowerProto] &&
+      this.hostname && !this.pathname) {
+    this.pathname = '/';
   }
 
   //to support http.request
-  if (out.pathname || out.search) {
-    out.path = (out.pathname ? out.pathname : '') +
-               (out.search ? out.search : '');
+  if (this.pathname || this.search) {
+    var p = this.pathname || '';
+    var s = this.search || '';
+    this.path = p + s;
   }
 
   // finally, reconstruct the href based on what has been validated.
-  out.href = urlFormat(out);
-  return out;
-}
+  this.href = this.format();
+  return this;
+};
 
 // format a parsed object into a url string
 function urlFormat(obj) {
@@ -8929,44 +9106,49 @@ function urlFormat(obj) {
   // If it's an obj, this is a no-op.
   // this way, you can call url_format() on strings
   // to clean up potentially wonky urls.
-  if (typeof(obj) === 'string') obj = urlParse(obj);
+  if (isString(obj)) obj = urlParse(obj);
+  if (!(obj instanceof Url)) return Url.prototype.format.call(obj);
+  return obj.format();
+}
 
-  var auth = obj.auth || '';
+Url.prototype.format = function() {
+  var auth = this.auth || '';
   if (auth) {
     auth = encodeURIComponent(auth);
     auth = auth.replace(/%3A/i, ':');
     auth += '@';
   }
 
-  var protocol = obj.protocol || '',
-      pathname = obj.pathname || '',
-      hash = obj.hash || '',
+  var protocol = this.protocol || '',
+      pathname = this.pathname || '',
+      hash = this.hash || '',
       host = false,
       query = '';
 
-  if (obj.host !== undefined) {
-    host = auth + obj.host;
-  } else if (obj.hostname !== undefined) {
-    host = auth + (obj.hostname.indexOf(':') === -1 ?
-        obj.hostname :
-        '[' + obj.hostname + ']');
-    if (obj.port) {
-      host += ':' + obj.port;
+  if (this.host) {
+    host = auth + this.host;
+  } else if (this.hostname) {
+    host = auth + (this.hostname.indexOf(':') === -1 ?
+        this.hostname :
+        '[' + this.hostname + ']');
+    if (this.port) {
+      host += ':' + this.port;
     }
   }
 
-  if (obj.query && typeof obj.query === 'object' &&
-      Object.keys(obj.query).length) {
-    query = querystring.stringify(obj.query);
+  if (this.query &&
+      isObject(this.query) &&
+      Object.keys(this.query).length) {
+    query = querystring.stringify(this.query);
   }
 
-  var search = obj.search || (query && ('?' + query)) || '';
+  var search = this.search || (query && ('?' + query)) || '';
 
   if (protocol && protocol.substr(-1) !== ':') protocol += ':';
 
   // only the slashedProtocols get the //.  Not mailto:, xmpp:, etc.
   // unless they had them to begin with.
-  if (obj.slashes ||
+  if (this.slashes ||
       (!protocol || slashedProtocol[protocol]) && host !== false) {
     host = '//' + (host || '');
     if (pathname && pathname.charAt(0) !== '/') pathname = '/' + pathname;
@@ -8977,40 +9159,68 @@ function urlFormat(obj) {
   if (hash && hash.charAt(0) !== '#') hash = '#' + hash;
   if (search && search.charAt(0) !== '?') search = '?' + search;
 
+  pathname = pathname.replace(/[?#]/g, function(match) {
+    return encodeURIComponent(match);
+  });
+  search = search.replace('#', '%23');
+
   return protocol + host + pathname + search + hash;
-}
+};
 
 function urlResolve(source, relative) {
-  return urlFormat(urlResolveObject(source, relative));
+  return urlParse(source, false, true).resolve(relative);
 }
+
+Url.prototype.resolve = function(relative) {
+  return this.resolveObject(urlParse(relative, false, true)).format();
+};
 
 function urlResolveObject(source, relative) {
   if (!source) return relative;
+  return urlParse(source, false, true).resolveObject(relative);
+}
 
-  source = urlParse(urlFormat(source), false, true);
-  relative = urlParse(urlFormat(relative), false, true);
+Url.prototype.resolveObject = function(relative) {
+  if (isString(relative)) {
+    var rel = new Url();
+    rel.parse(relative, false, true);
+    relative = rel;
+  }
+
+  var result = new Url();
+  Object.keys(this).forEach(function(k) {
+    result[k] = this[k];
+  }, this);
 
   // hash is always overridden, no matter what.
-  source.hash = relative.hash;
+  // even href="" will remove it.
+  result.hash = relative.hash;
 
+  // if the relative url is empty, then there's nothing left to do here.
   if (relative.href === '') {
-    source.href = urlFormat(source);
-    return source;
+    result.href = result.format();
+    return result;
   }
 
   // hrefs like //foo/bar always cut to the protocol.
   if (relative.slashes && !relative.protocol) {
-    relative.protocol = source.protocol;
+    // take everything except the protocol from relative
+    Object.keys(relative).forEach(function(k) {
+      if (k !== 'protocol')
+        result[k] = relative[k];
+    });
+
     //urlParse appends trailing / to urls like http://www.example.com
-    if (slashedProtocol[relative.protocol] &&
-        relative.hostname && !relative.pathname) {
-      relative.path = relative.pathname = '/';
+    if (slashedProtocol[result.protocol] &&
+        result.hostname && !result.pathname) {
+      result.path = result.pathname = '/';
     }
-    relative.href = urlFormat(relative);
-    return relative;
+
+    result.href = result.format();
+    return result;
   }
 
-  if (relative.protocol && relative.protocol !== source.protocol) {
+  if (relative.protocol && relative.protocol !== result.protocol) {
     // if it's a known url protocol, then changing
     // the protocol does weird things
     // first, if it's not file:, then we MUST have a host,
@@ -9020,10 +9230,14 @@ function urlResolveObject(source, relative) {
     // because that's known to be hostless.
     // anything else is assumed to be absolute.
     if (!slashedProtocol[relative.protocol]) {
-      relative.href = urlFormat(relative);
-      return relative;
+      Object.keys(relative).forEach(function(k) {
+        result[k] = relative[k];
+      });
+      result.href = result.format();
+      return result;
     }
-    source.protocol = relative.protocol;
+
+    result.protocol = relative.protocol;
     if (!relative.host && !hostlessProtocol[relative.protocol]) {
       var relPath = (relative.pathname || '').split('/');
       while (relPath.length && !(relative.host = relPath.shift()));
@@ -9031,72 +9245,72 @@ function urlResolveObject(source, relative) {
       if (!relative.hostname) relative.hostname = '';
       if (relPath[0] !== '') relPath.unshift('');
       if (relPath.length < 2) relPath.unshift('');
-      relative.pathname = relPath.join('/');
+      result.pathname = relPath.join('/');
+    } else {
+      result.pathname = relative.pathname;
     }
-    source.pathname = relative.pathname;
-    source.search = relative.search;
-    source.query = relative.query;
-    source.host = relative.host || '';
-    source.auth = relative.auth;
-    source.hostname = relative.hostname || relative.host;
-    source.port = relative.port;
-    //to support http.request
-    if (source.pathname !== undefined || source.search !== undefined) {
-      source.path = (source.pathname ? source.pathname : '') +
-                    (source.search ? source.search : '');
+    result.search = relative.search;
+    result.query = relative.query;
+    result.host = relative.host || '';
+    result.auth = relative.auth;
+    result.hostname = relative.hostname || relative.host;
+    result.port = relative.port;
+    // to support http.request
+    if (result.pathname || result.search) {
+      var p = result.pathname || '';
+      var s = result.search || '';
+      result.path = p + s;
     }
-    source.slashes = source.slashes || relative.slashes;
-    source.href = urlFormat(source);
-    return source;
+    result.slashes = result.slashes || relative.slashes;
+    result.href = result.format();
+    return result;
   }
 
-  var isSourceAbs = (source.pathname && source.pathname.charAt(0) === '/'),
+  var isSourceAbs = (result.pathname && result.pathname.charAt(0) === '/'),
       isRelAbs = (
-          relative.host !== undefined ||
+          relative.host ||
           relative.pathname && relative.pathname.charAt(0) === '/'
       ),
       mustEndAbs = (isRelAbs || isSourceAbs ||
-                    (source.host && relative.pathname)),
+                    (result.host && relative.pathname)),
       removeAllDots = mustEndAbs,
-      srcPath = source.pathname && source.pathname.split('/') || [],
+      srcPath = result.pathname && result.pathname.split('/') || [],
       relPath = relative.pathname && relative.pathname.split('/') || [],
-      psychotic = source.protocol &&
-          !slashedProtocol[source.protocol];
+      psychotic = result.protocol && !slashedProtocol[result.protocol];
 
   // if the url is a non-slashed url, then relative
   // links like ../.. should be able
   // to crawl up to the hostname, as well.  This is strange.
-  // source.protocol has already been set by now.
+  // result.protocol has already been set by now.
   // Later on, put the first path part into the host field.
   if (psychotic) {
-
-    delete source.hostname;
-    delete source.port;
-    if (source.host) {
-      if (srcPath[0] === '') srcPath[0] = source.host;
-      else srcPath.unshift(source.host);
+    result.hostname = '';
+    result.port = null;
+    if (result.host) {
+      if (srcPath[0] === '') srcPath[0] = result.host;
+      else srcPath.unshift(result.host);
     }
-    delete source.host;
+    result.host = '';
     if (relative.protocol) {
-      delete relative.hostname;
-      delete relative.port;
+      relative.hostname = null;
+      relative.port = null;
       if (relative.host) {
         if (relPath[0] === '') relPath[0] = relative.host;
         else relPath.unshift(relative.host);
       }
-      delete relative.host;
+      relative.host = null;
     }
     mustEndAbs = mustEndAbs && (relPath[0] === '' || srcPath[0] === '');
   }
 
   if (isRelAbs) {
     // it's absolute.
-    source.host = (relative.host || relative.host === '') ?
-                      relative.host : source.host;
-    source.hostname = (relative.hostname || relative.hostname === '') ?
-                      relative.hostname : source.hostname;
-    source.search = relative.search;
-    source.query = relative.query;
+    result.host = (relative.host || relative.host === '') ?
+                  relative.host : result.host;
+    result.hostname = (relative.hostname || relative.hostname === '') ?
+                      relative.hostname : result.hostname;
+    result.search = relative.search;
+    result.query = relative.query;
     srcPath = relPath;
     // fall through to the dot-handling below.
   } else if (relPath.length) {
@@ -9105,53 +9319,55 @@ function urlResolveObject(source, relative) {
     if (!srcPath) srcPath = [];
     srcPath.pop();
     srcPath = srcPath.concat(relPath);
-    source.search = relative.search;
-    source.query = relative.query;
-  } else if ('search' in relative) {
+    result.search = relative.search;
+    result.query = relative.query;
+  } else if (!isNullOrUndefined(relative.search)) {
     // just pull out the search.
     // like href='?foo'.
     // Put this after the other two cases because it simplifies the booleans
     if (psychotic) {
-      source.hostname = source.host = srcPath.shift();
+      result.hostname = result.host = srcPath.shift();
       //occationaly the auth can get stuck only in host
       //this especialy happens in cases like
       //url.resolveObject('mailto:local1@domain1', 'local2@domain2')
-      var authInHost = source.host && source.host.indexOf('@') > 0 ?
-                       source.host.split('@') : false;
+      var authInHost = result.host && result.host.indexOf('@') > 0 ?
+                       result.host.split('@') : false;
       if (authInHost) {
-        source.auth = authInHost.shift();
-        source.host = source.hostname = authInHost.shift();
+        result.auth = authInHost.shift();
+        result.host = result.hostname = authInHost.shift();
       }
     }
-    source.search = relative.search;
-    source.query = relative.query;
+    result.search = relative.search;
+    result.query = relative.query;
     //to support http.request
-    if (source.pathname !== undefined || source.search !== undefined) {
-      source.path = (source.pathname ? source.pathname : '') +
-                    (source.search ? source.search : '');
+    if (!isNull(result.pathname) || !isNull(result.search)) {
+      result.path = (result.pathname ? result.pathname : '') +
+                    (result.search ? result.search : '');
     }
-    source.href = urlFormat(source);
-    return source;
+    result.href = result.format();
+    return result;
   }
+
   if (!srcPath.length) {
     // no path at all.  easy.
     // we've already handled the other stuff above.
-    delete source.pathname;
+    result.pathname = null;
     //to support http.request
-    if (!source.search) {
-      source.path = '/' + source.search;
+    if (result.search) {
+      result.path = '/' + result.search;
     } else {
-      delete source.path;
+      result.path = null;
     }
-    source.href = urlFormat(source);
-    return source;
+    result.href = result.format();
+    return result;
   }
+
   // if a url ENDs in . or .., then it must get a trailing slash.
   // however, if it ends in anything else non-slashy,
   // then it must NOT get a trailing slash.
   var last = srcPath.slice(-1)[0];
   var hasTrailingSlash = (
-      (source.host || relative.host) && (last === '.' || last === '..') ||
+      (result.host || relative.host) && (last === '.' || last === '..') ||
       last === '');
 
   // strip single dots, resolve double dots to parent dir
@@ -9191,61 +9407,79 @@ function urlResolveObject(source, relative) {
 
   // put the host back
   if (psychotic) {
-    source.hostname = source.host = isAbsolute ? '' :
+    result.hostname = result.host = isAbsolute ? '' :
                                     srcPath.length ? srcPath.shift() : '';
     //occationaly the auth can get stuck only in host
     //this especialy happens in cases like
     //url.resolveObject('mailto:local1@domain1', 'local2@domain2')
-    var authInHost = source.host && source.host.indexOf('@') > 0 ?
-                     source.host.split('@') : false;
+    var authInHost = result.host && result.host.indexOf('@') > 0 ?
+                     result.host.split('@') : false;
     if (authInHost) {
-      source.auth = authInHost.shift();
-      source.host = source.hostname = authInHost.shift();
+      result.auth = authInHost.shift();
+      result.host = result.hostname = authInHost.shift();
     }
   }
 
-  mustEndAbs = mustEndAbs || (source.host && srcPath.length);
+  mustEndAbs = mustEndAbs || (result.host && srcPath.length);
 
   if (mustEndAbs && !isAbsolute) {
     srcPath.unshift('');
   }
 
-  source.pathname = srcPath.join('/');
-  //to support request.http
-  if (source.pathname !== undefined || source.search !== undefined) {
-    source.path = (source.pathname ? source.pathname : '') +
-                  (source.search ? source.search : '');
+  if (!srcPath.length) {
+    result.pathname = null;
+    result.path = null;
+  } else {
+    result.pathname = srcPath.join('/');
   }
-  source.auth = relative.auth || source.auth;
-  source.slashes = source.slashes || relative.slashes;
-  source.href = urlFormat(source);
-  return source;
-}
 
-function parseHost(host) {
-  var out = {};
+  //to support request.http
+  if (!isNull(result.pathname) || !isNull(result.search)) {
+    result.path = (result.pathname ? result.pathname : '') +
+                  (result.search ? result.search : '');
+  }
+  result.auth = relative.auth || result.auth;
+  result.slashes = result.slashes || relative.slashes;
+  result.href = result.format();
+  return result;
+};
+
+Url.prototype.parseHost = function() {
+  var host = this.host;
   var port = portPattern.exec(host);
   if (port) {
     port = port[0];
     if (port !== ':') {
-      out.port = port.substr(1);
+      this.port = port.substr(1);
     }
     host = host.substr(0, host.length - port.length);
   }
-  if (host) out.hostname = host;
-  return out;
+  if (host) this.hostname = host;
+};
+
+function isString(arg) {
+  return typeof arg === "string";
 }
 
-}());
+function isObject(arg) {
+  return typeof arg === 'object' && arg !== null;
+}
 
-},{"punycode":51,"querystring":54}],64:[function(require,module,exports){
+function isNull(arg) {
+  return arg === null;
+}
+function isNullOrUndefined(arg) {
+  return  arg == null;
+}
+
+},{"punycode":50,"querystring":53}],70:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],65:[function(require,module,exports){
+},{}],71:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -9834,5 +10068,5 @@ function hasOwnProperty(obj, prop) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
-}).call(this,require("/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js"),typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":64,"/usr/local/lib/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":50,"inherits":49}]},{},[1])
+}).call(this,require("UPikzY"),typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./support/isBuffer":70,"UPikzY":49,"inherits":48}]},{},[1])

@@ -17,7 +17,6 @@ h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6, .lead {
   border-radius: 0px;
 }
 .ui-slider .ui-slider-range {
-  background-color: black;
   border-radius: 0px;
 }
 
@@ -38,11 +37,11 @@ header {
 #hero {
     background-color: #1abc9c;
     padding-top: 50px;
-    padding-bottom: 200px;
+    padding-bottom: 150px;
     color: #fff;
 }
 #hero .intro {
-    padding: 0px 10px 0px 0px;
+    padding: 50px 10px 0px 0px;
 }
 #hero .logo {
     margin-bottom: 100px;
@@ -100,7 +99,7 @@ header {
 /*---------- About ----------*/
 #about {
     padding-top: 25px;
-    padding-bottom: 150px;
+    padding-bottom: 25px;
 }
 #about .user {
     padding: 25px 0px;

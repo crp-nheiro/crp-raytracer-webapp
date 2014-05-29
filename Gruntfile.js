@@ -279,7 +279,8 @@ module.exports = function (grunt) {
                         '{,*/}*.html',
                         'styles/fonts/{,*/}*.*',
                         'bower_components/bootstrap/dist/fonts/*.*',
-                        'scripts/worker/*.js'
+                        'scripts/worker/*.js',
+                        'examples/*.*'
                     ]
                 }]
             },
@@ -351,7 +352,7 @@ module.exports = function (grunt) {
         'cssmin',
         'uglify',
         'copy:dist',
-        'rev',
+        /*'rev',*/
         'usemin',
         'htmlmin'
     ]);

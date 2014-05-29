@@ -3,8 +3,8 @@
 #####################
 global
 {
-  width		1110
-  height	700
+  width		1400
+  height	800
   distscreen	1000
   highdef	1
 }
