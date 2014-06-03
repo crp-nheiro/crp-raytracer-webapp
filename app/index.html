@@ -78,12 +78,20 @@
                 <div class="col-md-6 col-sm-6">
                     <h3 class="text-center">Your Computer</h3>
                     <canvas id="canvas-local"></canvas>
-                    <p id="time-local" class="text-center lead">&nbsp;</p>
+                    <div class="metrics">
+                        <p id="time-local" class="text-center lead">&nbsp;</p>
+                        <p id="frames-local" class="text-center lead">&nbsp;</p>
+                        <p id="fps-local" class="text-center lead">&nbsp;</p>
+                    </div>
                 </div>
                 <div class="col-md-6 col-sm-6">
-                    <h3 class="text-center">Distributed with CrowdProcess</h3>
+                    <h3 class="text-center">With distracer.io</h3>
                     <canvas id="canvas-tracer"></canvas>
-                    <p id="time-tracer" class="text-center lead">&nbsp;</p>
+                    <div class="metrics">
+                        <p id="time-tracer" class="text-center lead">&nbsp;</p>
+                        <p id="frames-tracer" class="text-center lead">&nbsp;</p>
+                        <p id="fps-tracer" class="text-center lead">&nbsp;</p>
+                    </div>
                 </div>
             </div>
             <div class="row">
@@ -296,5 +304,6 @@
     <script src="scripts/tr.js"></script>
     <script src="scripts/main_browser.js"></script>
     <!-- endbuild -->
+
 </body>
 </html>

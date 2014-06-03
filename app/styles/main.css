@@ -76,6 +76,14 @@ header {
     margin: 0 auto;
 }
 
+#compare .metrics .lead {
+    margin-bottom: 5px;
+}
+
+#compare .metrics:last-child {
+    margin-bottom: 50px;
+}
+
 /*---------- Try ------------*/
 #try {
     background-color: #1abc9c;

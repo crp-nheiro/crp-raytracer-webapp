@@ -3,8 +3,8 @@
 #####################
 global
 {
-  width		1400
-  height	800
+  width		555
+  height	350
   distscreen	1000
   highdef	1
 }
@@ -16,7 +16,7 @@ global
 
 eye
 {
-  coords	-200 0 0
+  coords	-400 0 0
 }
 
 
