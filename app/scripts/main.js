@@ -35,8 +35,41 @@ function runRayTracer(input, tasks, canvasSelector, onEnd, animation, onFrame) {
         }
     }
 
+    function decode(bytes) {
+        var encodings = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+        
+        var a, b, c, d;
+        var byte1, byte2, byte3;
+
+        var length = (bytes.length / 4) * 3;
+        var uarray = new Uint8Array(length);
+
+        var i = 0;
+        for(var j = 0; j < length; j += 3) {
+            // get the 3 octects in 4 ascii chars
+            a = encodings.indexOf(bytes.charAt(i++));
+            b = encodings.indexOf(bytes.charAt(i++));
+            c = encodings.indexOf(bytes.charAt(i++));
+            d = encodings.indexOf(bytes.charAt(i++));
+
+            // xx xxxxxx xxxxxx xxxxxx xxxxxx xxxxxx 
+            //           aaaaaa bbbbbb cccccc dddddd
+            //           111111 112222 222233 333333
+
+            byte1 = (a << 2) | (b >> 4);
+            byte2 = ((b & 15) << 4) | (c >> 2);
+            byte3 = (c & 3) << 6 | d;
+
+            uarray[j] = byte1;
+            uarray[j+1] = byte2;
+            uarray[j+2] = byte3;
+        }
+
+        return uarray;
+    }
+
     /* Worker */
-    
+    /*
     if(tracerWorker) {
         tracerWorker.terminate();
     }
@@ -57,12 +90,15 @@ function runRayTracer(input, tasks, canvasSelector, onEnd, animation, onFrame) {
             } else {
                 frame = 0;
             }
+
+            var data = decode(result.data);
+
             for(var y = result.begin_y; y < result.end_y; y++) {
                 for(var x = result.begin_x; x < result.end_x; x++) {
                     var index = (x * canvas.width + y) * 4;
-                    canvasImageData[frame].data[index] = result.data[i++];
-                    canvasImageData[frame].data[index+1] = result.data[i++];
-                    canvasImageData[frame].data[index+2] = result.data[i++];
+                    canvasImageData[frame].data[index] = data[i++];
+                    canvasImageData[frame].data[index+1] = data[i++];
+                    canvasImageData[frame].data[index+2] = data[i++];
                     canvasImageData[frame].data[index+3] = 255;
                 }
             }
@@ -73,7 +109,6 @@ function runRayTracer(input, tasks, canvasSelector, onEnd, animation, onFrame) {
             splits++;
             if(onFrame) {
                 onFrame(splits / splitsPerFrame, animation.frames);
-
             }
 
         } else if (msg.data[0] === 'resize') {
@@ -107,9 +142,8 @@ function runRayTracer(input, tasks, canvasSelector, onEnd, animation, onFrame) {
             animation: animation,
         }
     ]);
+    */
     
-
-    /*
     var rayTracer = new RayTracer({
         split: tasks,
         input: input,
@@ -138,7 +172,7 @@ function runRayTracer(input, tasks, canvasSelector, onEnd, animation, onFrame) {
         console.log(error);
     });
 
-    rayTracer.on('data', function(result) {
+    function onData(result) {
         var i = 0;
         var frame;
         if(result.animation) {
@@ -146,12 +180,15 @@ function runRayTracer(input, tasks, canvasSelector, onEnd, animation, onFrame) {
         } else {
             frame = 0;
         }
+        
+        var data = decode(result.data);
+
         for(var y = result.begin_y; y < result.end_y; y++) {
             for(var x = result.begin_x; x < result.end_x; x++) {
                 var index = (x * canvas.width + y) * 4;
-                canvasImageData[frame].data[index] = result.data[i++];
-                canvasImageData[frame].data[index+1] = result.data[i++];
-                canvasImageData[frame].data[index+2] = result.data[i++];
+                canvasImageData[frame].data[index] = data[i++];
+                canvasImageData[frame].data[index+1] = data[i++];
+                canvasImageData[frame].data[index+2] = data[i++];
                 canvasImageData[frame].data[index+3] = 255;
             }
         }
@@ -162,16 +199,19 @@ function runRayTracer(input, tasks, canvasSelector, onEnd, animation, onFrame) {
         if(onFrame) {
             onFrame(splits / splitsPerFrame, animation.frames);
         }
-    });
+    }
 
     rayTracer.on('end', function() {
+        if(onFrame) {
+            onFrame(splits / splitsPerFrame, animation.frames);
+        }
         if(onEnd != null) {
             onEnd();
         }
     });
     
-    rayTracer.run();
-    */
+    rayTracer.run(onData);
+
 }
 
 var worker;
@@ -305,10 +345,14 @@ var frameLocal = 0;
 
 var stopTracer = function() {
     clearInterval(timerTracer);
+    $('#frames-tracer').html(frameTracer.toFixed(2) + ' frames');
+    $('#fps-tracer').html((frameTracer / timeTracer).toFixed(2) + ' fps');
 };
 
 var stopLocal = function() {
     clearInterval(timerLocal);
+    $('#frames-local').html(frameLocal + ' frames');
+    $('#fps-local').html((frameLocal / timeLocal).toFixed(2) + ' fps');
 };
 
 var onTracerFrame = function(frame, totalFrames) {
@@ -331,28 +375,26 @@ $('#run').click(function() {
         timeTracer++;
         $('#time-tracer').html(timeTracer + 's');
         $('#frames-tracer').html(frameTracer.toFixed(2) + ' frames');
-        if(timeTracer == 0) {
-            $('#fps-tracer').html('0 fps');
-        } else {
-            $('#fps-tracer').html((frameTracer / timeTracer).toFixed(2) + ' fps');
-        }
+        $('#fps-tracer').html((frameTracer / timeTracer).toFixed(2) + ' fps');
     }, 1000);
+    $('#time-tracer').html('0 s');
+    $('#frames-tracer').html('0 frames');
+    $('#fps-tracer').html('0 fps');
     
     timeLocal = 0;
     timerLocal = setInterval(function() {
         timeLocal++;
         $('#time-local').html(timeLocal + 's');
         $('#frames-local').html(frameLocal + ' frames');
-        if(timeLocal == 0) {
-            $('#fps-local').html('0 fps');
-        } else {
-            $('#fps-local').html((frameLocal / timeLocal).toFixed(2) + ' fps');
-        }
+        $('#fps-local').html((frameLocal / timeLocal).toFixed(2) + ' fps');
     }, 1000);
+    $('#time-local').html('0 s');
+    $('#frames-local').html('0 frames');
+    $('#fps-local').html('0 fps');
     
     var animation = {
-        fps: 50,
-        frames: 100
+        fps: 10,
+        frames: 50
     }
 
     // Run raytracer
